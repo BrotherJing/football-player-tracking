@@ -12,128 +12,106 @@ using namespace std;
 const CvScalar CVX_WHITE = CV_RGB(0xff, 0xff, 0xff);
 const CvScalar CVX_BLACK = CV_RGB(0x00, 0x00, 0x00);
 
+const int IMAGE_SCALE = 2;
+
 IplImage *frame, *Ismall, *birdsImg;
 IplImage *frameRight, *IsmallRight;
+IplImage *Iscratch, *Iscratch2;
+IplImage *Imaskt, *Imask, *ImaskBird, *ImaskPlayers, *ImaskLines;
+IplImage *ImaskSmall, *ImaskSmall2, *ImaskBirdt;
 CvSize sz, szBird;
-CvPoint2D32f objPts[4], imgPts[4], objPtsRight[4];
 int cnt=0;
 
-IplImage *IavgF, *IdiffF, *IprevF, *IhiF, *IlowF;
-IplImage *Iscratch, *Iscratch2;
-IplImage *Iblue, *Igreen, *Ired;
-IplImage *Ilow1, *Ilow2, *Ilow3;
-IplImage *Ihi1, *Ihi2, *Ihi3;
-IplImage *Imaskt, *Imask, *ImaskBird, *ImaskPlayers, *ImaskLines;
-float Icount;
+//contour
+CvRect playerRect[30];
+CvPoint playerCenter[30];
+int playerCount=30;
+
+//perspective
+CvMat *H = cvCreateMat(3,3,CV_32F), *H_inv = cvCreateMat(3,3,CV_32F);
+CvMat *H2 = cvCreateMat(3,3,CV_32F), *H_r2l = cvCreateMat(3,3,CV_32F);
+CvPoint2D32f objPts[4], imgPts[4], objPtsRight[4];
 
 //histogram
-int max_idx_red=0, max_idx_blue=0, max_idx_green=0;
+int max_idx_red[2], max_idx_blue[2], max_idx_green[2];
 const int MARGIN = 10;
 const int MARGIN_BLUE = 35;
 const int MARGIN_GREEN = 40;
-const int MARGIN_WHITE = 10;
+const int MARGIN_WHITE = 60;
 
 void AllocImages(IplImage *frame){
 
 	sz=cvGetSize(frame);
 	sz.width=sz.width/2;sz.height=sz.height/2;
 	szBird = cvGetSize(frame);
+	//szBird.width/=2;szBird.height/=2;
 	szBird.width=WIDTH;szBird.height=HEIGHT;
 
 	Ismall = cvCreateImage(sz,frame->depth,frame->nChannels);
 	birdsImg=cvCreateImage(szBird,frame->depth,frame->nChannels);
 	IsmallRight=cvCreateImage(sz,frame->depth,frame->nChannels);
 
-	//CvSize sz=cvGetSize(i);
-	IavgF = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	IdiffF = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	IprevF = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	IhiF = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	IlowF = cvCreateImage(sz,IPL_DEPTH_32F,3);
+	Iscratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_32F,3);
+	Iscratch2 = cvCreateImage(cvGetSize(frame),IPL_DEPTH_32F,3);
 
-	Ilow1 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ilow2 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ilow3 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ihi1 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ihi2 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ihi3 = cvCreateImage(sz,IPL_DEPTH_32F,1);
-
-	cvZero(IavgF);cvZero(IdiffF);cvZero(IprevF);cvZero(IhiF);cvZero(IlowF);
-	Icount=0.00001;
-	Iscratch = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	Iscratch2 = cvCreateImage(sz,IPL_DEPTH_32F,3);
-	Iblue = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Igreen = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Ired = cvCreateImage(sz,IPL_DEPTH_32F,1);
-	Imaskt = cvCreateImage(sz,IPL_DEPTH_8U,1);
-
-	Imask = cvCreateImage(sz,IPL_DEPTH_8U,1);
+	Imask = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	Imaskt = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 	ImaskBird = cvCreateImage(szBird, IPL_DEPTH_8U, 1);
-	ImaskPlayers = cvCreateImage(sz, IPL_DEPTH_8U, 1);
-	ImaskLines = cvCreateImage(sz, IPL_DEPTH_8U, 1);
+	ImaskPlayers = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+	ImaskLines = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+
+	ImaskSmall = cvCreateImage(sz, IPL_DEPTH_8U, 1);
+	ImaskSmall2 = cvCreateImage(sz, IPL_DEPTH_8U, 1);
+	ImaskBirdt = cvCreateImage(szBird, IPL_DEPTH_8U, 1);
 
 	cvZero(Iscratch);cvZero(Iscratch2);
 }
 
 void DeallocateImages(){
-	cvReleaseImage(&IavgF);
-	cvReleaseImage(&IdiffF);
-	cvReleaseImage(&IprevF);
-	cvReleaseImage(&IhiF);
-	cvReleaseImage(&IlowF);
-	cvReleaseImage(&Ilow1);cvReleaseImage(&Ilow2);cvReleaseImage(&Ilow3);
-	cvReleaseImage(&Ihi1);cvReleaseImage(&Ihi2);cvReleaseImage(&Ihi3);
 	cvReleaseImage(&Iscratch);cvReleaseImage(&Iscratch2);
-	cvReleaseImage(&Iblue);cvReleaseImage(&Igreen);cvReleaseImage(&Ired);
 	cvReleaseImage(&Imaskt);
 }
 
-//accumulate avg and diff
-void accumulateBackground(IplImage *i){
-	static int first=1;
-	cvCvtScale(i,Iscratch,1,0);
-	if(!first){
-		cvAcc(Iscratch,IavgF);
-		cvAbsDiff(Iscratch,IprevF,Iscratch2);
-		cvAcc(Iscratch2,IdiffF);
-		Icount+=1.0;
+CvPoint transformPoint(const CvPoint point, const CvMat* matrix){
+
+	/*float H[9];
+	for(int i=0;i<3;++i){
+		for(int j=0;j<3;++j){
+			H[i*3+j]=cvmGet(matrix,i,j);
+		}
 	}
-	first=0;
-	cvCopy(Iscratch,IprevF);
-}
+	CvMat *matrix2 = cvCreateMat(3,3,CV_32FC1);
+	cvInitMatHeader(matrix2, 3,3,CV_32FC1,H);
+	float coordinates[2]={point.x*1.0f, point.y*1.0f};
+	CvMat *original = cvCreateMat(1,1,CV_32FC2);
+	cvInitMatHeader(original, 1, 1, CV_32FC2, coordinates);
+	CvMat *result = cvCreateMat(1,1,CV_32FC2);
+	cvPerspectiveTransform(original, result, matrix2);
+	float *pdata=(float*)(result->data.ptr);
+	return cvPoint((int)(*pdata), (int)(*(pdata+1)));*/
 
-void setHighThreshold(float scale){
-	cvConvertScale(IdiffF,Iscratch,scale);
-	cvAdd(Iscratch,IavgF,IhiF);
-	cvSplit(IhiF,Ihi1,Ihi2,Ihi3,0);
-}
-
-void setLowThreshold(float scale){
-	cvConvertScale(IdiffF,Iscratch,scale);
-	cvSub(IavgF,Iscratch,IlowF);
-	cvSplit(IlowF,Ilow1,Ilow2,Ilow3,0);
-}
-
-//divide accumulated value to get avg and diff
-void createModelFromStats(){
-	cvConvertScale(IavgF,IavgF,(double)(1.0/Icount));
-	cvConvertScale(IdiffF,IdiffF,(double)(1.0/Icount));
-	cvAddS(IdiffF,cvScalar(1.0,1.0,1.0),IdiffF);
-	setHighThreshold(2.5);
-	setLowThreshold(2.5);
-}
-
-//generate mask for foreground
-void backgroudDiff(IplImage *i, IplImage *Imask){
-	cvCvtScale(i,Iscratch,1,0);
-	cvSplit(Iscratch,Iblue,Igreen,Ired,0);
-	
-	cvInRange(Iblue,Ilow1,Ihi1,Imask);//in this range? background
-	cvInRange(Igreen,Ilow2,Ihi2,Imaskt);
-	cvOr(Imask,Imaskt,Imask);
-	cvInRange(Ired,Ilow3,Ihi3,Imaskt);
-	cvOr(Imask,Imaskt,Imask);
-	cvSubRS(Imask,cvScalar(255,255,255),Imask);
+	float coordinates[3]={point.x*1.0f, point.y*1.0f, 1.0f};
+	CvMat originVector = cvMat(3,1,CV_32F,coordinates);
+	CvMat transformedVector = cvMat(3,1,CV_32F,coordinates);
+	CvMat *inv = cvCreateMat(3,3,CV_32F);
+	cvInvert(matrix, inv);
+	/*for(int i=0;i<3;++i)cout<<coordinates[i]<<' ';
+	cout<<endl;
+	for(int i=0;i<3;++i){
+		for(int j=0;j<3;++j){
+			cout<<cvmGet(matrix,i,j)<<' ';
+		}
+		cout<<endl;
+	}*/
+	cvMatMul(inv,&originVector,&transformedVector);
+	/*for(int i=0;i<3;++i){
+		cout<<cvmGet(&transformedVector,i,0)<<' ';
+	}
+	cout<<endl;*/
+	//cvWaitKey();
+	CvPoint result=cvPoint((int)(cvmGet(&transformedVector,0,0)/cvmGet(&transformedVector,2,0)),
+			(int)(cvmGet(&transformedVector,1,0)/cvmGet(&transformedVector,2,0)));
+	return result;
 }
 
 void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull0=1, float perimScale=60, int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL){
@@ -141,7 +119,7 @@ void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull
 	static CvSeq *contours=NULL;
 	if(!find_ground){
 		cvMorphologyEx(mask,mask,0,0,CV_MOP_OPEN,CVCLOSE_ITR_SMALL);//open
-		cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR_SMALL);//close
+		cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
 		//cvErode(mask, mask, 0, 1);
 		//cvDilate(mask ,mask, 0, 1);
 	}else{
@@ -176,16 +154,20 @@ void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull
 			double tmparea=fabs(cvContourArea(c));
 			double len = cvContourPerimeter(c);
 			CvRect aRect = cvBoundingRect( c, 0 );
-			if(tmparea<80){
+			if(tmparea<50){//area too small
 				cvSubstituteContour(scanner, NULL);
 				continue;
 			}
-			if ((aRect.width/aRect.height)>2)
+			/*if((aRect.y*1.0/mask->height*200+20)<(mask->height*1.0/perimScale)){
+				cvSubstituteContour(scanner, NULL);
+				continue;
+			}*/
+			if ((aRect.width/aRect.height)>2)//too fat
 			{
 				cvSubstituteContour(scanner, NULL); //删除宽高比例小于设定值的轮廓
 				continue;
 			}
-			if(len/tmparea>4){
+			if(len/tmparea>3){//strange shape
 				cvSubstituteContour(scanner, NULL);
 				continue;
 			}
@@ -231,7 +213,11 @@ void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull
 				cvZero(maskTemp);
 				numFilled++;
 			}
-			cvDrawContours(mask, c, CVX_WHITE, CVX_WHITE, -1, CV_FILLED, 8);//draw contours on mask
+			if(find_ground){
+				double tmparea=fabs(cvContourArea(c));
+				if(tmparea<maxarea-1)continue;
+			}
+			cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
 		}
 		*num = numFilled;
 		cvReleaseImage(&maskTemp);
@@ -264,7 +250,7 @@ void cvMouseCallback(int mouseEvent, int x, int y, int flags, void* param){
 	}
 }
 
-void showHist(IplImage *frame){
+void showHist(IplImage *frame, int isRight){
 	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
 	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
@@ -276,15 +262,19 @@ void showHist(IplImage *frame){
 	int hist_height=256;
 	float range[] = {1, 255};
 	float *ranges[] = {range};
-	CvHistogram *blue_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY);
-	CvHistogram *green_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY);
-	CvHistogram *red_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY);
+	CvHistogram *blue_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
+	CvHistogram *green_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
+	CvHistogram *red_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
 	cvCalcHist(&blue, blue_hist, 0, 0);
 	cvCalcHist(&green, green_hist, 0, 0);
 	cvCalcHist(&red, red_hist, 0, 0);
 	cvNormalizeHist(blue_hist, 1.0);cvNormalizeHist(green_hist, 1.0);cvNormalizeHist(red_hist, 1.0);
 
-	IplImage *hist_img = cvCreateImage(cvSize(hist_size*3,hist_height),IPL_DEPTH_8U,3);
+	float max_value = 0;
+	cvGetMinMaxHistValue(red_hist, 0,&max_value,0,max_idx_red+isRight);
+	cvGetMinMaxHistValue(blue_hist, 0,&max_value,0,max_idx_blue+isRight);
+	cvGetMinMaxHistValue(green_hist, 0,&max_value,0,max_idx_green+isRight);
+	/*IplImage *hist_img = cvCreateImage(cvSize(hist_size*3,hist_height),IPL_DEPTH_8U,3);
 	cvZero(hist_img);
 	float max_value = 0;
 	cvGetMinMaxHistValue(red_hist, 0, &max_value, 0, &max_idx_red);
@@ -317,13 +307,13 @@ void showHist(IplImage *frame){
 			cvPoint((i+1)+hist_size*2,hist_height-intensity),
 			CV_RGB(0,0,255));
 	}
-	cout<<max_idx_red<<' '<<max_idx_green<<' '<<max_idx_blue<<endl;
+	//cout<<max_idx_red<<' '<<max_idx_green<<' '<<max_idx_blue<<endl;
 	cvShowImage("gray",hist_img);
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
-	cvReleaseImage(&hist_img);
+	cvReleaseImage(&hist_img);*/
 }
 
-void findGround(IplImage *frame, IplImage *Imask){
+void findGround(IplImage *frame, IplImage *Imask, int isRight){
 
 	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
 	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
@@ -332,10 +322,10 @@ void findGround(IplImage *frame, IplImage *Imask){
 	cvCvtScale(frame, scratch, 1, 0);
 	cvSplit(scratch,blue,green,red,0);
 
-	cvInRangeS(blue, cvScalar(max_idx_blue-MARGIN_BLUE), cvScalar(max_idx_blue+MARGIN_BLUE), Imask);
-	cvInRangeS(green, cvScalar(max_idx_green-MARGIN_GREEN), cvScalar(max_idx_green+MARGIN_GREEN), Imaskt);
+	cvInRangeS(blue, cvScalar(max_idx_blue[isRight]-MARGIN_BLUE), cvScalar(max_idx_blue[isRight]+MARGIN_BLUE), Imask);
+	cvInRangeS(green, cvScalar(max_idx_green[isRight]-MARGIN_GREEN), cvScalar(max_idx_green[isRight]+MARGIN_GREEN), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(max_idx_red-MARGIN), cvScalar(max_idx_red+MARGIN), Imaskt);
+	cvInRangeS(red, cvScalar(max_idx_red[isRight]-MARGIN), cvScalar(max_idx_red[isRight]+MARGIN), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
 	//cvCmp(green, blue, Imaskt, CV_CMP_GT);
 	cvSub(green, blue, Imaskt);
@@ -349,7 +339,7 @@ void findGround(IplImage *frame, IplImage *Imask){
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
 }
 
-void findLines(IplImage *frame, IplImage *Imask){
+void findLines(IplImage *frame, IplImage *Imask, int isRight){
 	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
 	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
@@ -357,24 +347,34 @@ void findLines(IplImage *frame, IplImage *Imask){
 	cvCvtScale(frame, scratch, 1, 0);
 	cvSplit(scratch,blue,green,red,0);
 
-	cvInRangeS(blue, cvScalar(255-MARGIN_WHITE), cvScalar(255), Imask);
-	cvInRangeS(green, cvScalar(255-MARGIN_GREEN), cvScalar(255), Imaskt);
+	cvInRangeS(blue, cvScalar(max_idx_blue[isRight]-80), cvScalar(max_idx_blue[isRight]+80), Imask);
+	/*cvShowImage("display", Imask);
+	cout<<"blue"<<endl;
+	cvWaitKey();*/
+	cvInRangeS(green, cvScalar(max_idx_green[isRight]-90), cvScalar(max_idx_green[isRight]+90), Imaskt);
+	/*cvShowImage("display", Imaskt);
+	cout<<"green"<<endl;
+	cvWaitKey();*/
 	cvOr(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(255-MARGIN_WHITE), cvScalar(255), Imaskt);
+	cvInRangeS(red, cvScalar(max_idx_red[isRight]-5), cvScalar(max_idx_red[isRight]+5), Imaskt);
+	/*cvShowImage("display", Imaskt);
+	cout<<"red"<<endl;
+	cvWaitKey();*/
 	cvOr(Imask,Imaskt,Imask);
+	//cvNot(Imask, Imask);
+	/*cvShowImage("display", Imask);
+	cvWaitKey();*/
 
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
 }
 
 int main(int argc,char **argv){
 
-	float train_size = 1;
-	int has_model = 0;
-
 	cvNamedWindow("gray",WINDOW_AUTOSIZE);
 	namedWindow("display",WINDOW_AUTOSIZE);
 	namedWindow("displayRight", WINDOW_AUTOSIZE);
 	namedWindow("bird",WINDOW_AUTOSIZE);
+	namedWindow("bird2",WINDOW_AUTOSIZE);
 	CvCapture *capture = cvCreateFileCapture(argv[1]);
 	CvCapture *captureRight = cvCreateFileCapture(argv[2]);
 	frame=cvQueryFrame(capture);
@@ -386,23 +386,18 @@ int main(int argc,char **argv){
 	cvShowImage("display",Ismall);
 	cvResize(frameRight, IsmallRight);
 	cvShowImage("displayRight", IsmallRight);
-	showHist(frame);
+	showHist(frame,0);
+	showHist(frameRight,1);
+
 	setMouseCallback("display",cvMouseCallback);
 	setMouseCallback("displayRight",cvMouseCallback);
 	while(cnt<8)cvWaitKey(0);//click to set obj points
 
-	CvMat *H = cvCreateMat(3,3,CV_32F), *H_inv = cvCreateMat(3,3,CV_32F);
-	CvMat *H2 = cvCreateMat(3,3,CV_32F), *H_r2l = cvCreateMat(3,3,CV_32F);
 	imgPts[0].x=szBird.width/2; imgPts[0].y=szBird.height/2;
 	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
 	imgPts[2].x=szBird.width/2; imgPts[2].y=szBird.height;
 	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;
 	
-	/*imgPts[0].x=LEFT; imgPts[0].y=TOP;
-	imgPts[1].x=RIGHT; imgPts[1].y=TOP;
-	imgPts[2].x=LEFT; imgPts[2].y=BOTTOM;
-	imgPts[3].x=RIGHT; imgPts[3].y=BOTTOM;*/
-
 	cvGetPerspectiveTransform(imgPts, objPts, H);
 	cvGetPerspectiveTransform(imgPts, objPtsRight, H2);
 	cvInvert(H, H_inv);
@@ -419,37 +414,45 @@ int main(int argc,char **argv){
 		cvResize(frame, Ismall);
 		cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
 			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
-		cvResize(frameRight, IsmallRight);
-		cvWarpPerspective(IsmallRight, IsmallRight, H_r2l, CV_INTER_LINEAR|
+
+		findGround(frame, Imask,0);
+		cvCvtScale(Imask,ImaskPlayers,1,0);
+		find_connected_components(Imask);
+		cvNot(ImaskPlayers, ImaskPlayers);
+		cvAnd(Imask, ImaskPlayers, ImaskPlayers);
+		//find_connected_components(ImaskPlayers, 0);
+		find_connected_components(ImaskPlayers, 0, 0, 60, &playerCount, playerRect, playerCenter);
+		
+		cvZero(birdsImg);
+		for(int i=0;i<playerCount;++i){
+			CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
+			pt.x=pt.x/IMAGE_SCALE;
+			pt.y=pt.y/IMAGE_SCALE;
+			//pt = transformPoint(pt, H);
+			//cvCircle(birdsImg, pt, 5, CVX_WHITE , CV_FILLED);
+			cvRectangle(ImaskPlayers, cvPoint(playerRect[i].x,playerRect[i].y),
+				cvPoint(playerRect[i].x+playerRect[i].width,playerRect[i].y+playerRect[i].height), CVX_WHITE);
+		}
+		playerCount=30;
+		//cvShowImage("display", frame);
+		cvShowImage("display", ImaskPlayers);
+		/*cvResize(ImaskPlayers, ImaskSmall);
+		cvWarpPerspective(ImaskSmall, ImaskBird, H, CV_INTER_LINEAR|
+			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);*/
+		cvShowImage("bird", birdsImg);
+
+		findGround(frameRight, Imask,0);
+		cvCvtScale(Imask, ImaskPlayers, 1, 0);
+		find_connected_components(Imask);
+		cvNot(ImaskPlayers, ImaskPlayers);
+		cvAnd(Imask, ImaskPlayers, ImaskPlayers);
+		find_connected_components(ImaskPlayers,0);
+		cvResize(ImaskPlayers, ImaskSmall);
+		cvWarpPerspective(ImaskSmall, ImaskBirdt, H2, CV_INTER_LINEAR|
 			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+		cvShowImage("bird2", ImaskBirdt);
+		cvAnd(ImaskBird, ImaskBirdt, ImaskBird);
 
-		if(!has_model&&Icount<train_size){
-			accumulateBackground(Ismall);
-		}else{
-			if(!has_model){
-				has_model=1;
-				createModelFromStats();
-			}
-		}
-		if(has_model){
-			//backgroudDiff(Ismall, Imask);
-			//find_connected_components(Imask);
-			/*cvWarpPerspective(Imask, ImaskBird, H, CV_INTER_LINEAR|
-				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
-			cvShowImage("display",ImaskBird);*/
-			findGround(Ismall, Imask);
-			//cvShowImage("display", Imask);
-			//findLines(Ismall, ImaskLines);
-			cvCvtScale(Imask,ImaskPlayers,1,0);
-			find_connected_components(Imask);
-			cvNot(ImaskPlayers, ImaskPlayers);
-			cvAnd(Imask, ImaskPlayers, ImaskPlayers);
-			find_connected_components(ImaskPlayers,0);
-			cvShowImage("display", ImaskPlayers);
-			cvShowImage("displayRight", IsmallRight);
-		}
-
-		cvShowImage("bird",birdsImg);
 		char c = cvWaitKey(33);
 		if(c==27)break;
 	}
@@ -458,5 +461,6 @@ int main(int argc,char **argv){
 	cvDestroyWindow("display");
 	cvDestroyWindow("displayRight");
 	cvDestroyWindow("bird");
+	cvDestroyWindow("bird2");
 	return 0;
 }

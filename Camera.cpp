@@ -13,6 +13,7 @@ using namespace cv;
 using namespace std;
 
 const CvScalar CVX_WHITE = CV_RGB(0xff, 0xff, 0xff);
+const CvScalar CVX_RED = CV_RGB(0xff, 0x00, 0x00);
 const CvScalar CVX_BLACK = CV_RGB(0x00, 0x00, 0x00);
 
 const int IMAGE_SCALE = 2;
@@ -403,7 +404,7 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 		while(true){
 			float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
 			float k2 = ((pts[i].y-hull_p[hull_size-2].y)*1.0f/(pts[i].x-hull_p[hull_size-2].x));
-			if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
+			if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0||fabs(atan(k1)-atan(k2))<CV_PI/45){
 				/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
 				cvShowImage("display",Imask);*/
 				ipop(hull_p);
@@ -421,7 +422,7 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 	while(true){
 		float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
 		float k2 = ((pts[0].y-hull_p[hull_size-2].y)*1.0f/(pts[0].x-hull_p[hull_size-2].x));
-		if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[0])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
+		if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[0])<0||fabs(atan(k1)-atan(k2))<CV_PI/45){
 			/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
 			cvShowImage("display",Imask);*/
 			ipop(hull_p);
@@ -431,6 +432,43 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 	}
 
 	return hull_size;
+}
+
+CvPoint addLines[4][2];
+int addLineCnt=0;
+void callbackAddLines(int event, int x, int y, int flag, void *ustc){
+	static bool isButtonFirstDown = true;
+	static CvPoint startPoint;
+	if(addLineCnt==4)return;
+	if(event==CV_EVENT_LBUTTONDOWN){
+		if(isButtonFirstDown){
+			isButtonFirstDown=false;
+			startPoint.x=x*IMAGE_SCALE;
+			startPoint.y=y*IMAGE_SCALE;
+		}else{
+			isButtonFirstDown=true;
+			CvPoint endPoint = cvPoint(x*IMAGE_SCALE, y*IMAGE_SCALE);
+			addLines[addLineCnt][0]=startPoint;
+			addLines[addLineCnt][1]=endPoint;
+			cvLine(frame, startPoint,endPoint ,CVX_RED, 2);
+			cvResize(frame,Ismall);
+			cvShowImage("display",Ismall);
+			addLineCnt++;
+		}
+	}
+}
+
+CvPoint additionalPoints[4];
+int additionalPointsCnt=0;
+void addPointCallback(int event, int x, int y, int flag, void *ustc){
+	if(event==CV_EVENT_LBUTTONDOWN){
+		additionalPoints[additionalPointsCnt].x=x*IMAGE_SCALE;
+		additionalPoints[additionalPointsCnt].y=y*IMAGE_SCALE;
+		cvCircle(frame, additionalPoints[additionalPointsCnt],5,CVX_RED,CV_FILLED);
+		cvResize(frame,Ismall);
+		cvShowImage("display",Ismall);
+		additionalPointsCnt++;
+	}
 }
 
 bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRight, CvPoint* result=NULL){
@@ -457,6 +495,8 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	cvOr(Imask,Imaskt,Imask);
 	cvNot(Imask, Imask);
 	cvAnd(Imask, ImaskGround, Imask);
+	/*cvShowImage("displayRight", Imask);
+	cvWaitKey();*/
 
 	//cvSmooth(Imask,Imask,CV_MEDIAN,3,3);
 	//find_connected_components(Imask,0, 0, 200, NULL, NULL, NULL,1);
@@ -471,8 +511,8 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 
 	//remove overlapping lines.
 	cvZero(Imask);
-	CvPoint **lines = new CvPoint*[lineseq->total];
-	float **k_b = new float*[lineseq->total];
+	CvPoint **lines = new CvPoint*[lineseq->total+4];
+	float **k_b = new float*[lineseq->total+4];
 	for(int i=0;i<lineseq->total;++i){
 		lines[i]=new CvPoint[2];
 		k_b[i]=new float[2];
@@ -507,10 +547,49 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			k_b[total][0]=k2;
 			k_b[total][1]=b2;
 			total++;
+			cvLine(frame,line[0],line[1],CVX_RED,1,CV_AA,0);
 		}
 		cvLine(Imask,line[0],line[1],CVX_WHITE,3,CV_AA,0);
 	}
 	if(result==NULL)return false;//only need lines, return.
+
+	//if there are no enough line, add some line manually
+	cvResize(frame, Ismall);
+	cvShowImage("display",Ismall);
+	setMouseCallback("display",callbackAddLines);
+	cvWaitKey();
+	for(int i=0;i<addLineCnt;++i){
+		found=false;
+		CvPoint* line = addLines[i];
+		float k2 = (line[0].y-line[1].y)*1.0/(line[0].x-line[1].x);
+		float b2 = line[0].y-line[0].x*k2;
+		for(int j=0;j<total;++j){
+			CvPoint *prevLine = lines[j];
+			float k1 = (prevLine[0].y-prevLine[1].y)*1.0/(prevLine[0].x-prevLine[1].x);
+			float b1 = prevLine[0].y-prevLine[0].x*k1;
+			if(fabs(atan(k1)-atan(k2))<5e-1&&fabs(b1-b2)<30){//too close to each other
+				float len1 = (prevLine[0].y-prevLine[1].y)*(prevLine[0].y-prevLine[1].y)+(prevLine[0].x-prevLine[1].x)*(prevLine[0].x-prevLine[1].x);
+				float len2 = (line[0].y-line[1].y)*(line[0].y-line[1].y)+(line[0].x-line[1].x)*(line[0].x-line[1].x);
+				if(len1<len2){
+					prevLine[0]=line[0];
+					prevLine[1]=line[1];
+					k_b[j][0]=k2;
+					k_b[j][1]=b2;
+				}
+				found=true;
+				break;
+			}
+		}
+		if(!found){
+			lines[total][0]=line[0];
+			lines[total][1]=line[1];
+			k_b[total][0]=k2;
+			k_b[total][1]=b2;
+			total++;
+			cout<<"new line: ("<<line[0].x<<","<<line[0].y<<")->("<<line[1].x<<","<<line[1].y<<")"<<endl;
+		}
+	}
+	addLineCnt=0;
 
 	//find cross point
 	CvSize img_size=cvGetSize(frame);
@@ -538,30 +617,47 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			cross_cnt++;
 		}
 	}
+	for(int i=0;i<cross_cnt;++i){
+		cvCircle(frame, cross[i], 5, CVX_RED , CV_FILLED);
+	}
+	cvResize(frame, Ismall);
+	cvShowImage("display",Ismall);
+	cvWaitKey();
 
 	//find hull, and playground boundary
 	cvZero(Imask);
 	CvPoint *final=new CvPoint[cross_cnt];
 	int hull_cnt = findHull2(Imask, cross,cross_cnt,final);
-	if(hull_cnt!=4)return false;
 	for(int i=0;i<hull_cnt;++i){
 		cout<<"("<<final[i].x<<","<<final[i].y<<")"<<endl;
 	}
-	if(result!=NULL){
-		result[0]=final[1];
-		result[1]=final[2];
-		result[2]=final[0];
-		result[3]=final[3];
-	}
+	if(hull_cnt!=4)return false;
 
-	/*cvClearMemStorage(storage);
-	lines=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,200,200,50);
-	cvZero(Imask);
-	for(int i=0;i<lines->total;++i){
-		CvPoint* line = (CvPoint*)cvGetSeqElem(lines,i);
-		cvLine(Imask,line[0],line[1],CVX_WHITE,1,CV_AA,0);
+	//find points in order
+	int min_x=final[0].x,max_x=final[0].x,min_y=final[0].y,max_y=final[0].y;
+	int min_x_id, min_y_id, max_x_id, max_y_id;
+	for(int i=0;i<hull_cnt;++i){
+		if(final[i].x<=min_x){min_x=final[i].x;min_x_id=i;}
+		if(final[i].x>=max_x){max_x=final[i].x;max_x_id=i;}
+		if(final[i].y<=min_y){min_y=final[i].y;min_y_id=i;}
+		if(final[i].y>=max_y){max_y=final[i].y;max_y_id=i;}
 	}
-	cvShowImage("display", Imask);*/
+	int upper_left=0;
+	if(min_x_id==min_y_id){upper_left=min_x_id;}// found upper left
+	else if(max_x_id==max_y_id){upper_left=(max_x_id+2)%4;}//found lower right
+	else if(min_x_id==max_y_id){upper_left=(min_x_id+1)%4;}//found lower left
+	else if(max_x_id==min_y_id){upper_left=(max_x_id+3)%4;}//found upper right
+	else{
+		cout<<final[max_y_id].x<<' '<<img_size.width<<endl;
+		if(final[max_y_id].x>img_size.width/2)upper_left=min_y_id;//right camera
+		else upper_left=min_x_id;
+	}
+	if(result!=NULL){
+		result[0]=final[upper_left];
+		result[1]=final[(upper_left+1)%4];
+		result[2]=final[(upper_left+3)%4];
+		result[3]=final[(upper_left+2)%4];
+	}
 
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
 	return true;
@@ -626,16 +722,16 @@ int main(int argc,char **argv){
 		cvCvtScale(Imask,ImaskPlayers,1,0);
 		find_connected_components(Imask);
 
-		cvResize(frame, Ismall);
 		if(!foundPerspective){
 			foundPerspective = findLines(frame, Imask, ImaskLines, 0, ptsOnLine);
-			getPerspectiveTransform(ptsOnLine);
-		}else{
-			cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
-				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+			if(foundPerspective)getPerspectiveTransform(ptsOnLine);
+			continue;
 		}
+		cvResize(frame, Ismall);
+		cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
+			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
 
-		findLines(frame, Imask, ImaskLines, 0);
+		findLines(frame, Imask, ImaskLines, 1);
 		cvNot(ImaskPlayers, ImaskPlayers);
 		cvSub(ImaskPlayers, ImaskLines, ImaskPlayers);
 		cvAnd(Imask,ImaskPlayers,ImaskPlayers);

@@ -1,10 +1,16 @@
 #ifndef HEADER_CONSTANTS
 #define HEADER_CONSTANTS
 
-#include<cstdio>
-#include<cmath>
-#include<opencv2/opencv.hpp>
-#include<highgui.h>
+#include <cstdio>
+#include <cmath>
+#include <opencv2/opencv.hpp>
+#include <highgui.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <vector>
+
+#include "header/qcvcamshifttracker.h"
+
 
 #define CV_CONTOUR_APPROX_LEVEL 1
 #define CVCLOSE_ITR 2

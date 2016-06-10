@@ -14,6 +14,13 @@ IplImage *ImaskSmall, *ImaskSmall2, *ImaskBirdt;
 CvSize sz, szBird;
 int cnt=0;
 
+// tracking
+// Variables needed by callback func ...
+vector<QcvCAMshiftTracker> camShiftTrackers;
+bool selectObject = false;
+cv::Point origin;
+cv::Rect selection;
+
 //contour
 CvRect playerRect[30];
 CvPoint playerCenter[30];
@@ -62,22 +69,38 @@ void DeallocateImages(){
 	cvReleaseImage(&Imaskt);
 }
 
-void cvMouseCallback(int mouseEvent, int x, int y, int flags, void* param){
-	switch(mouseEvent){
-		case CV_EVENT_LBUTTONDOWN:
-			if(cnt<4){
-				objPts[cnt].x=x;
-				objPts[cnt].y=y;
-				cnt++;
-			}else if(cnt<8){
-				objPtsRight[cnt-4].x=x;
-				objPtsRight[cnt-4].y=y;
-				cnt++;
-			}
-			break;
-		default:
-			break;
-	}
+// Callback function used in labeler image show window ...
+static void camShiftLabelerOnMouse( int event, int x, int y, int, void* )
+{
+    if( selectObject )
+    {
+        selection.x = MIN(x, origin.x);
+        selection.y = MIN(y, origin.y);
+        selection.width = std::abs(x - origin.x);
+        selection.height = std::abs(y - origin.y);
+
+        // 这个是干什么的
+        selection &= cv::Rect(0, 0, QcvCAMshiftTracker::getMainImage().cols, QcvCAMshiftTracker::getMainImage().rows);
+    }
+
+    switch( event )
+    {
+    case CV_EVENT_LBUTTONDOWN://鼠标向下
+        origin = cv::Point(x,y);
+        selection = cv::Rect(x,y,0,0);
+        selectObject = true;
+        break;
+    case CV_EVENT_LBUTTONUP://鼠标向上
+        selectObject = false;
+        if( selection.width > 0 && selection.height > 0 )
+        {
+            // 加入一个新的 newTracker
+            QcvCAMshiftTracker newTracker;//these two lines are important!!
+            newTracker.setCurrentRect(selection);
+            camShiftTrackers.push_back(newTracker);
+        }
+        break;
+    }
 }
 
 void showHist(IplImage *frame, int isRight){
@@ -365,78 +388,93 @@ void getPerspectiveTransform(CvPoint *pts){
 
 int main(int argc,char **argv){
 
+	bool paused=false;
+	cv::Mat m_frame;
+
 	namedWindow("display",WINDOW_AUTOSIZE);
 	namedWindow("displayRight", WINDOW_AUTOSIZE);
 	namedWindow("lines",WINDOW_AUTOSIZE);
 	namedWindow("bird",WINDOW_AUTOSIZE);
 	namedWindow("bird2",WINDOW_AUTOSIZE);
 	CvCapture *capture = cvCreateFileCapture(argv[1]);
-	//CvCapture *captureRight = cvCreateFileCapture(argv[2]);
 	frame=cvQueryFrame(capture);
-	//frameRight=cvQueryFrame(captureRight);
 
 	AllocImages(frame);
 
 	cvResize(frame, Ismall);
 	cvShowImage("display",Ismall);
 	showHist(frame,0);
-	/*cvResize(frameRight, IsmallRight);
-	cvShowImage("displayRight", IsmallRight);
-	showHist(frameRight,1);*/
 
-	setMouseCallback("display",cvMouseCallback);
-	//setMouseCallback("displayRight",cvMouseCallback);
-	//while(cnt<4)cvWaitKey(0);//click to set obj points
-
-	/*cvGetPerspectiveTransform(imgPts, objPtsRight, H2);
-	cvInvert(H, H_inv);
-	cvGEMM(H2, H_inv, 1.0, NULL, 0.0, H_r2l);
-
-	cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
-			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
-	cvShowImage("bird",birdsImg);*/
+	setMouseCallback( "display", camShiftLabelerOnMouse, 0 );
 	
 	while(1){
-		frame=cvQueryFrame(capture);
-		//frameRight=cvQueryFrame(captureRight);
-		if(!frame
-			//||!frameRight
-			)
-			break;
+		if(!paused){
+			frame=cvQueryFrame(capture);
+			//frameRight=cvQueryFrame(captureRight);
+			if(!frame
+				//||!frameRight
+				)
+				break;
 
-		findGround(frame, Imask,0);
-		cvCvtScale(Imask,ImaskPlayers,1,0);
-		find_connected_components(Imask);
+			findGround(frame, Imask,0);
+			cvCvtScale(Imask,ImaskPlayers,1,0);
+			find_connected_components(Imask);
 
-		if(!foundPerspective){
-			foundPerspective = findLines(frame, Imask, ImaskLines, 0, ptsOnLine);
-			if(foundPerspective)getPerspectiveTransform(ptsOnLine);
-			continue;
+			if(!foundPerspective){
+				foundPerspective = findLines(frame, Imask, ImaskLines, 0, ptsOnLine);
+				if(foundPerspective){
+					getPerspectiveTransform(ptsOnLine);
+					setMouseCallback( "display", camShiftLabelerOnMouse, 0 );
+				}
+				continue;
+			}
+			cvResize(frame, Ismall);
+			cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
+				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+
+			findLines(frame, Imask, ImaskLines, 1);
+			cvNot(ImaskPlayers, ImaskPlayers);
+			cvSub(ImaskPlayers, ImaskLines, ImaskPlayers);
+			cvAnd(Imask,ImaskPlayers,ImaskPlayers);
+			find_connected_components(ImaskPlayers, 0, 0, 60, &playerCount, playerRect, playerCenter);
+			for(int i=0;i<playerCount;++i){
+				CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
+				pt.x=pt.x/IMAGE_SCALE;
+				pt.y=pt.y/IMAGE_SCALE;
+				pt = transformPoint(pt, H);
+				cvCircle(birdsImg, pt, 5, CVX_WHITE , CV_FILLED);
+				/*cvRectangle(ImaskPlayers, cvPoint(playerRect[i].x,playerRect[i].y),
+					cvPoint(playerRect[i].x+playerRect[i].width,playerRect[i].y+playerRect[i].height), CVX_WHITE);*/
+			}
+			playerCount=30;
+			cvShowImage("bird", birdsImg);
+
+			m_frame=Mat(Ismall);
+			QcvCAMshiftTracker::setMainImage(m_frame);
+			for(int i=0; i<camShiftTrackers.size(); i++){
+				if(camShiftTrackers[i].trackCurrentRect().boundingRect().area() <= 1)
+					continue;
+				cv::ellipse(m_frame, camShiftTrackers[i].trackCurrentRect(), cv::Scalar(0, 255, 0), 2, CV_AA);
+				cv::rectangle(m_frame, camShiftTrackers[i].trackCurrentRect().boundingRect(), cv::Scalar(0, 255, 0), 2, CV_AA);
+			}
 		}
-		cvResize(frame, Ismall);
-		cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
-			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
 
-		findLines(frame, Imask, ImaskLines, 1);
-		cvNot(ImaskPlayers, ImaskPlayers);
-		cvSub(ImaskPlayers, ImaskLines, ImaskPlayers);
-		cvAnd(Imask,ImaskPlayers,ImaskPlayers);
-		find_connected_components(ImaskPlayers, 0, 0, 60, &playerCount, playerRect, playerCenter);
-		for(int i=0;i<playerCount;++i){
-			CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
-			pt.x=pt.x/IMAGE_SCALE;
-			pt.y=pt.y/IMAGE_SCALE;
-			pt = transformPoint(pt, H);
-			cvCircle(birdsImg, pt, 5, CVX_WHITE , CV_FILLED);
-			/*cvRectangle(ImaskPlayers, cvPoint(playerRect[i].x,playerRect[i].y),
-				cvPoint(playerRect[i].x+playerRect[i].width,playerRect[i].y+playerRect[i].height), CVX_WHITE);*/
+		if( selectObject && selection.width > 0 && selection.height > 0 ){
+			cv::Mat roi(m_frame, selection);
+			cv::bitwise_not(roi, roi);
 		}
-		playerCount=30;
-		cvShowImage("bird", birdsImg);
+
+		cvShowImage("display", Ismall);
 
 		char c = cvWaitKey(33);
 		if(c==27)break;
+		switch(c){
+		case 'p':paused = !paused;break;
+		case 'k':camShiftTrackers.clear();break;
+		default:break;
+		}
 	}
+	camShiftTrackers.clear();
 	DeallocateImages();
 	cvReleaseCapture(&capture);
 	cvDestroyWindow("display");

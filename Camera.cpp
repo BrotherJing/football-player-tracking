@@ -44,9 +44,6 @@ const int MARGIN_BLUE = 35;
 const int MARGIN_GREEN = 40;
 const int MARGIN_WHITE = 60;
 
-//lines
-
-
 void AllocImages(IplImage *frame){
 
 	sz=cvGetSize(frame);
@@ -163,17 +160,16 @@ void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull
 		if(!find_ground&&!find_lines){
 			double tmparea=fabs(cvContourArea(c));
 			double len = cvContourPerimeter(c);
-			CvRect aRect = cvBoundingRect( c, 0 );
-			//cout<<tmparea<<endl;
+			CvRect aRect = cvBoundingRect(c, 0);
 			if(tmparea<100){//area too small
 				cvSubstituteContour(scanner, NULL);
 				continue;
 			}
-			/*if((aRect.y*1.0/mask->height*200+20)<(mask->height*1.0/perimScale)){
+			if((aRect.y*1.0/mask->height*60+10)>aRect.height){
 				cvSubstituteContour(scanner, NULL);
 				continue;
-			}*/
-			if ((aRect.width/aRect.height)>2)//too fat
+			}
+			if ((aRect.width*1.0/aRect.height)>1.5)//too fat
 			{
 				cvSubstituteContour(scanner, NULL); //删除宽高比例小于设定值的轮廓
 				continue;
@@ -188,14 +184,6 @@ void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull
 		if(len<q){
 			cvSubstituteContour(scanner,NULL);
 			continue;
-		}else{
-			/*CvSeq *c_new;
-			if(poly1_hull0){
-				c_new=cvApproxPoly(c, sizeof(CvContour), mem_storage, CV_POLY_APPROX_DP, CV_CONTOUR_APPROX_LEVEL, 0);
-			}else{
-				c_new=cvConvexHull2(c, mem_storage, CV_CLOCKWISE, 1);
-			}
-			cvSubstituteContour(scanner,c_new);//replace the contour with the smooth one*/
 		}
 		numCont++;
 	}
@@ -356,7 +344,7 @@ void findGround(IplImage *frame, IplImage *Imask, int isRight){
 #define DIS(a,b) sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y))
 #define SGN(x) (fabs(x)<ZERO?0:(x>0?1:-1))
 #define CROSS(a,b,c) ((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x))
-#define CMP(a,b) (a.x<b.x||SGN(a.x-b.x)==0&&a.y<b.y)
+#define CMP(a,b) (a.x<b.x||(SGN(a.x-b.x)==0&&a.y<b.y))
 int hull_size=0;
 inline void ipush(CvPoint *S, CvPoint pt){S[hull_size++]=pt;}
 inline CvPoint ipop(CvPoint *S){return S[--hull_size];}
@@ -368,7 +356,7 @@ inline void iswap(CvPoint *p, int x, int y){
 inline bool icompare(CvPoint a,CvPoint b,CvPoint c){
 	int tmp=SGN(CROSS(a,b,c));
 	if(tmp!=0)return tmp>0;
-	else return DIS(a,b)<DIS(a,c);//????
+	else return DIS(a,b)<DIS(a,c);
 }
 void isort(CvPoint *p, int l,int r){
 	CvPoint tmp = p[(l + r) / 2];  
@@ -412,16 +400,9 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 	cvShowImage("display",Imask);  */
 
 	for(int i=3;i<cnt;++i){
-		/*while(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0){
-			cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
-			ipop(hull_p);
-			cvShowImage("display",Imask);  
-			//cvWaitKey(100);
-		}*/
 		while(true){
 			float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
 			float k2 = ((pts[i].y-hull_p[hull_size-2].y)*1.0f/(pts[i].x-hull_p[hull_size-2].x));
-			//if(k2/k1<1.2)ipop(hull_p);
 			if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
 				/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
 				cvShowImage("display",Imask);*/
@@ -434,14 +415,12 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 		cvShowImage("display",Imask);  */
 
 		ipush(hull_p,pts[i]);
-		/*cout<<"push ("<<pts[i].x<<","<<pts[i].y<<")"<<endl;
-		cvWaitKey();*/
 	}
 
+	//connect the last node to the first
 	while(true){
 		float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
 		float k2 = ((pts[0].y-hull_p[hull_size-2].y)*1.0f/(pts[0].x-hull_p[hull_size-2].x));
-		//if(k2/k1<1.2)ipop(hull_p);
 		if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[0])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
 			/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
 			cvShowImage("display",Imask);*/
@@ -450,83 +429,11 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 			break;
 		}
 	}
-	/*cvLine(Imask,hull_p[hull_size - 1],pts[0],cvScalar(255,0,255));//为了看清运行过程而加的  
-	cvShowImage("display",Imask);  
-	cvPolyLine(Imask,&hull_p,&hull_size,1,1,cvScalar(0,0,255),2);
-	cvWaitKey();*/
 
 	return hull_size;
 }
 
-/*int findHull(CvPoint* pts, int cnt, CvPoint *final){
-	CvMemStorage *storage=cvCreateMemStorage(0);
-	CvSeq *ptseq = cvCreateSeq(CV_SEQ_KIND_GENERIC|CV_32SC2,sizeof(CvContour),
-		sizeof(CvPoint),storage);
-	CvSeq *hull;
-	int hullCnt;
-	for(int i=0;i<cnt;++i){
-		cvSeqPush(ptseq,&pts[i]);
-	}
-	hull = cvConvexHull2(ptseq,0,CV_CLOCKWISE,0);
-	hullCnt = hull->total;
-	cout<<"hullcnt: "<<hullCnt<<endl;
-	//if(hullCnt!=4)return false;
-	for(int i=0;i<hullCnt;++i){
-		CvPoint pt=**CV_GET_SEQ_ELEM(CvPoint*,hull,i);
-		final[i]=pt;
-	}
-	cvClearMemStorage(storage);
-	return hullCnt;
-}*/
-
 bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRight, CvPoint* result=NULL){
-	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
-	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	IplImage *red = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	cvCvtScale(frame, scratch, 1, 0);
-	cvSplit(scratch,blue,green,red,0);
-	/*cvShowImage("display",blue);
-	cvWaitKey();
-	cvShowImage("display",green);
-	cvWaitKey();
-	cvShowImage("display",red);
-	cvWaitKey();*/
-
-	
-	cvInRangeS(blue, cvScalar(0), cvScalar(max_idx_blue[isRight]+40), Imask);
-	/*cvShowImage("display", Imask);
-	cout<<"blue"<<endl;
-	cvWaitKey();*/
-	cvInRangeS(green, cvScalar(0), cvScalar(max_idx_green[isRight]+85), Imaskt);
-	/*cvShowImage("display", Imaskt);
-	cout<<"green"<<endl;
-	cvWaitKey();*/
-	cvOr(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(0), cvScalar(max_idx_red[isRight]+5), Imaskt);
-	/*cvShowImage("display", Imaskt);
-	cout<<"red"<<endl;
-	cvWaitKey();*/
-	cvOr(Imask,Imaskt,Imask);
-	cvNot(Imask, Imask);
-	/*cvShowImage("display", Imask);
-	cvWaitKey();*/
-
-	cvAnd(Imask, ImaskGround, Imask);
-	/*cvShowImage("display", Imask);
-	cvWaitKey();*/
-
-	/*cvSmooth(Imask,Imask,CV_MEDIAN,3,3);
-	cvShowImage("display", Imask);
-	cvWaitKey();*/
-
-	/*find_connected_components(Imask,0, 0, 200, NULL, NULL, NULL,1);
-	cvShowImage("display", Imask);
-	cvWaitKey();*/
-
-	cvCanny(Imask,Imask,150,100);
-	/*cvShowImage("display", Imask);
-	cvWaitKey();*/
 
 	static CvMemStorage *storage;
 	if(storage==NULL){
@@ -535,10 +442,41 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 		cvClearMemStorage(storage);
 	}
 	CvSeq *lineseq=0;
-	lineseq=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,100,200,50);
+
+	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
+	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	IplImage *red = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	cvCvtScale(frame, scratch, 1, 0);
+	cvSplit(scratch,blue,green,red,0);
+	
+	cvInRangeS(blue, cvScalar(0), cvScalar(max_idx_blue[isRight]+40), Imask);
+	cvInRangeS(green, cvScalar(0), cvScalar(max_idx_green[isRight]+85), Imaskt);
+	cvOr(Imask,Imaskt,Imask);
+	cvInRangeS(red, cvScalar(0), cvScalar(max_idx_red[isRight]+5), Imaskt);
+	cvOr(Imask,Imaskt,Imask);
+	cvNot(Imask, Imask);
+	cvAnd(Imask, ImaskGround, Imask);
+
+	//cvSmooth(Imask,Imask,CV_MEDIAN,3,3);
+	//find_connected_components(Imask,0, 0, 200, NULL, NULL, NULL,1);
+
+	cvCanny(Imask,Imask,150,100);
+
+	//find lines
+	if(result==NULL)
+		lineseq=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,50,50,10);
+	else
+		lineseq=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,100,200,50);
+
+	//remove overlapping lines.
 	cvZero(Imask);
-	CvPoint lines[lineseq->total][2];
-	float k_b[lineseq->total][2];
+	CvPoint **lines = new CvPoint*[lineseq->total];
+	float **k_b = new float*[lineseq->total];
+	for(int i=0;i<lineseq->total;++i){
+		lines[i]=new CvPoint[2];
+		k_b[i]=new float[2];
+	}
 	int total=0;
 	bool found=false;
 	for(int i=0;i<lineseq->total;++i){
@@ -550,7 +488,7 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			CvPoint *prevLine = lines[j];
 			float k1 = (prevLine[0].y-prevLine[1].y)*1.0/(prevLine[0].x-prevLine[1].x);
 			float b1 = prevLine[0].y-prevLine[0].x*k1;
-			if(fabs(atan(k1)-atan(k2))<5e-1&&fabs(b1-b2)<30){
+			if(fabs(atan(k1)-atan(k2))<5e-1&&fabs(b1-b2)<30){//too close to each other
 				float len1 = (prevLine[0].y-prevLine[1].y)*(prevLine[0].y-prevLine[1].y)+(prevLine[0].x-prevLine[1].x)*(prevLine[0].x-prevLine[1].x);
 				float len2 = (line[0].y-line[1].y)*(line[0].y-line[1].y)+(line[0].x-line[1].x)*(line[0].x-line[1].x);
 				if(len1<len2){
@@ -560,7 +498,6 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 					k_b[j][1]=b2;
 				}
 				found=true;
-				//cout<<"found"<<endl;
 				break;
 			}
 		}
@@ -571,20 +508,13 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			k_b[total][1]=b2;
 			total++;
 		}
-		cvLine(Imask,line[0],line[1],CVX_WHITE,1,CV_AA,0);
+		cvLine(Imask,line[0],line[1],CVX_WHITE,3,CV_AA,0);
 	}
-	/*cvShowImage("display", Imask);
-	cvWaitKey();*/
+	if(result==NULL)return false;//only need lines, return.
 
-	/*cout<<"found "<<total<<endl;
-	cvZero(Imask);
-	for(int i=0;i<total;++i){
-		cvLine(Imask,lines[i][0],lines[i][1],CVX_WHITE,1,CV_AA,0);
-	}*/
-
+	//find cross point
 	CvSize img_size=cvGetSize(frame);
-	//cout<<"image size:"<<img_size.width<<"x"<<img_size.height<<endl;
-	CvPoint cross[total*(total-1)/2];
+	CvPoint *cross=new CvPoint[total*(total-1)/2];
 	int cross_cnt=0;
 	for(int i=0;i<total-1;++i){
 		for(int j=i+1;j<total;++j){
@@ -608,19 +538,13 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			cross_cnt++;
 		}
 	}
-	/*for(int i=0;i<cross_cnt;++i){
-		cvCircle(Imask, cross[i], 5, CVX_WHITE , CV_FILLED);
-		cout<<"("<<cross[i].x<<","<<cross[i].y<<")"<<endl;
-	}
-	cvShowImage("display", Imask);
-	cvWaitKey();*/
 
+	//find hull, and playground boundary
 	cvZero(Imask);
-	CvPoint final[cross_cnt];
+	CvPoint *final=new CvPoint[cross_cnt];
 	int hull_cnt = findHull2(Imask, cross,cross_cnt,final);
 	if(hull_cnt!=4)return false;
 	for(int i=0;i<hull_cnt;++i){
-		//cvCircle(Imask, final[i], 5, CVX_WHITE , CV_FILLED);
 		cout<<"("<<final[i].x<<","<<final[i].y<<")"<<endl;
 	}
 	if(result!=NULL){
@@ -629,13 +553,6 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 		result[2]=final[0];
 		result[3]=final[3];
 	}
-	/*for(int i=0;i<hull_cnt;++i){
-		cvCircle(Imask, final[i], 5, CVX_WHITE , CV_FILLED);
-		cout<<"("<<final[i].x<<","<<final[i].y<<")"<<endl;
-	}
-	cvShowImage("display", Imask);
-	cvWaitKey();*/
-
 
 	/*cvClearMemStorage(storage);
 	lines=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,200,200,50);
@@ -646,17 +563,12 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	}
 	cvShowImage("display", Imask);*/
 
-
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
 	return true;
 }
 
 void getPerspectiveTransform(CvPoint *pts){
 
-	/*imgPts[0].x=szBird.width/2; imgPts[0].y=szBird.height/2;
-	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
-	imgPts[2].x=szBird.width/2; imgPts[2].y=szBird.height;
-	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;*/
 	imgPts[0].x=0; imgPts[0].y=szBird.height/2;
 	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
 	imgPts[2].x=0; imgPts[2].y=szBird.height;
@@ -671,9 +583,6 @@ void getPerspectiveTransform(CvPoint *pts){
 
 int main(int argc,char **argv){
 
-	//IBGS *bgs;
-	//bgs = new FrameDifferenceBGS;//static people will disappear!!
-	//bgs = new AdaptiveBackgroundLearning;//use background, with shadow in the back
 	namedWindow("display",WINDOW_AUTOSIZE);
 	namedWindow("displayRight", WINDOW_AUTOSIZE);
 	namedWindow("lines",WINDOW_AUTOSIZE);
@@ -726,13 +635,11 @@ int main(int argc,char **argv){
 				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
 		}
 
+		findLines(frame, Imask, ImaskLines, 0);
 		cvNot(ImaskPlayers, ImaskPlayers);
+		cvSub(ImaskPlayers, ImaskLines, ImaskPlayers);
 		cvAnd(Imask,ImaskPlayers,ImaskPlayers);
-		//cvAnd(ImaskPlayers,&iImaskPlayers,&iImaskPlayers);
-		//find_connected_components(ImaskPlayers, 0);
 		find_connected_components(ImaskPlayers, 0, 0, 60, &playerCount, playerRect, playerCenter);
-		
-		//cvZero(birdsImg);
 		for(int i=0;i<playerCount;++i){
 			CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
 			pt.x=pt.x/IMAGE_SCALE;
@@ -743,24 +650,7 @@ int main(int argc,char **argv){
 				cvPoint(playerRect[i].x+playerRect[i].width,playerRect[i].y+playerRect[i].height), CVX_WHITE);*/
 		}
 		playerCount=30;
-		cvShowImage("display", ImaskPlayers);
-		//cvShowImage("display", frame);
-		/*cvResize(ImaskPlayers, ImaskSmall);
-		cvWarpPerspective(ImaskSmall, ImaskBird, H, CV_INTER_LINEAR|
-			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);*/
 		cvShowImage("bird", birdsImg);
-
-		/*findGround(frameRight, Imask,0);
-		cvCvtScale(Imask, ImaskPlayers, 1, 0);
-		find_connected_components(Imask);
-		cvNot(ImaskPlayers, ImaskPlayers);
-		cvAnd(Imask, ImaskPlayers, ImaskPlayers);
-		find_connected_components(ImaskPlayers,0);
-		cvResize(ImaskPlayers, ImaskSmall);
-		cvWarpPerspective(ImaskSmall, ImaskBirdt, H2, CV_INTER_LINEAR|
-			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
-		cvShowImage("bird2", ImaskBirdt);
-		cvAnd(ImaskBird, ImaskBirdt, ImaskBird);*/
 
 		char c = cvWaitKey(33);
 		if(c==27)break;

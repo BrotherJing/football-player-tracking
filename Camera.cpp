@@ -1,9 +1,3 @@
-#include<cstdio>
-#include<cmath>
-#include<opencv2/opencv.hpp>
-#include<highgui.h>
-#include "package_bgs/FrameDifferenceBGS.h"
-#include "package_bgs/AdaptiveBackgroundLearning.h"
 #include "header/camera.h"
 
 #define cvQueryHistValue_1D( hist, idx0 ) \
@@ -11,12 +5,6 @@
 
 using namespace cv;
 using namespace std;
-
-const CvScalar CVX_WHITE = CV_RGB(0xff, 0xff, 0xff);
-const CvScalar CVX_RED = CV_RGB(0xff, 0x00, 0x00);
-const CvScalar CVX_BLACK = CV_RGB(0x00, 0x00, 0x00);
-
-const int IMAGE_SCALE = 2;
 
 IplImage *frame, *Ismall, *birdsImg;
 IplImage *frameRight, *IsmallRight;
@@ -40,10 +28,6 @@ bool foundPerspective=false;
 
 //histogram
 int max_idx_red[2], max_idx_blue[2], max_idx_green[2];
-const int MARGIN = 10;
-const int MARGIN_BLUE = 35;
-const int MARGIN_GREEN = 40;
-const int MARGIN_WHITE = 60;
 
 void AllocImages(IplImage *frame){
 
@@ -76,161 +60,6 @@ void AllocImages(IplImage *frame){
 void DeallocateImages(){
 	cvReleaseImage(&Iscratch);cvReleaseImage(&Iscratch2);
 	cvReleaseImage(&Imaskt);
-}
-
-CvPoint transformPoint(const CvPoint point, const CvMat* matrix){
-
-	/*float H[9];
-	for(int i=0;i<3;++i){
-		for(int j=0;j<3;++j){
-			H[i*3+j]=cvmGet(matrix,i,j);
-		}
-	}
-	CvMat *matrix2 = cvCreateMat(3,3,CV_32FC1);
-	cvInitMatHeader(matrix2, 3,3,CV_32FC1,H);
-	float coordinates[2]={point.x*1.0f, point.y*1.0f};
-	CvMat *original = cvCreateMat(1,1,CV_32FC2);
-	cvInitMatHeader(original, 1, 1, CV_32FC2, coordinates);
-	CvMat *result = cvCreateMat(1,1,CV_32FC2);
-	cvPerspectiveTransform(original, result, matrix2);
-	float *pdata=(float*)(result->data.ptr);
-	return cvPoint((int)(*pdata), (int)(*(pdata+1)));*/
-
-	float coordinates[3]={point.x*1.0f, point.y*1.0f, 1.0f};
-	CvMat originVector = cvMat(3,1,CV_32F,coordinates);
-	CvMat transformedVector = cvMat(3,1,CV_32F,coordinates);
-	CvMat *inv = cvCreateMat(3,3,CV_32F);
-	cvInvert(matrix, inv);
-	/*for(int i=0;i<3;++i)cout<<coordinates[i]<<' ';
-	cout<<endl;
-	for(int i=0;i<3;++i){
-		for(int j=0;j<3;++j){
-			cout<<cvmGet(matrix,i,j)<<' ';
-		}
-		cout<<endl;
-	}*/
-	cvMatMul(inv,&originVector,&transformedVector);
-	/*for(int i=0;i<3;++i){
-		cout<<cvmGet(&transformedVector,i,0)<<' ';
-	}
-	cout<<endl;*/
-	//cvWaitKey();
-	CvPoint result=cvPoint((int)(cvmGet(&transformedVector,0,0)/cvmGet(&transformedVector,2,0)),
-			(int)(cvmGet(&transformedVector,1,0)/cvmGet(&transformedVector,2,0)));
-	return result;
-}
-
-void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull0=1, float perimScale=60, int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL, int find_lines=0){
-	static CvMemStorage *mem_storage=NULL;
-	static CvSeq *contours=NULL;
-	if(!find_lines){
-		if(!find_ground){
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_OPEN,CVCLOSE_ITR_SMALL);//open
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
-			//cvErode(mask, mask, 0, 1);
-			//cvDilate(mask ,mask, 0, 1);
-		}else{
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
-		}
-	}
-	if(mem_storage==NULL){
-		mem_storage = cvCreateMemStorage(0);
-	}else{
-		cvClearMemStorage(mem_storage);
-	}
-	//find contours
-	CvContourScanner scanner = cvStartFindContours(mask,mem_storage, 
-		sizeof(CvContour),CV_RETR_EXTERNAL,CV_CHAIN_APPROX_SIMPLE);
-	CvSeq *c;
-	int numCont = 0;
-	int maxarea = 0;
-	while((c=cvFindNextContour(scanner))!=NULL){
-		if(find_ground){
-			double tmparea=fabs(cvContourArea(c));
-			CvRect aRect = cvBoundingRect( c, 0 );
-			if ((aRect.width/aRect.height)>5||(aRect.height/aRect.width)>5)
-			{
-				cvSubstituteContour(scanner, NULL); //删除宽高比例小于设定值的轮廓
-				continue;
-			}
-			if(tmparea > maxarea)
-			{
-				maxarea = tmparea;
-			}
-		}
-		if(!find_ground&&!find_lines){
-			double tmparea=fabs(cvContourArea(c));
-			double len = cvContourPerimeter(c);
-			CvRect aRect = cvBoundingRect(c, 0);
-			if(tmparea<100){//area too small
-				cvSubstituteContour(scanner, NULL);
-				continue;
-			}
-			if((aRect.y*1.0/mask->height*60+10)>aRect.height){
-				cvSubstituteContour(scanner, NULL);
-				continue;
-			}
-			if ((aRect.width*1.0/aRect.height)>1.5)//too fat
-			{
-				cvSubstituteContour(scanner, NULL); //删除宽高比例小于设定值的轮廓
-				continue;
-			}
-			if(len/tmparea>3){//strange shape
-				cvSubstituteContour(scanner, NULL);
-				continue;
-			}
-		}
-		double len = cvContourPerimeter(c);
-		double q = (mask->height+mask->width)/perimScale;
-		if(len<q){
-			cvSubstituteContour(scanner,NULL);
-			continue;
-		}
-		numCont++;
-	}
-	contours=cvEndFindContours(&scanner);
-	
-	cvZero(mask);
-	IplImage *maskTemp;
-	if(num!=NULL){
-		int N=*num, numFilled=0, i=0;
-		CvMoments moments;
-		double M00,M01,M10;
-		maskTemp = cvCloneImage(mask);
-		for(i=0,c=contours;c!=NULL;c=c->h_next,i++){
-			if(i<N){
-				cvDrawContours(maskTemp, c, CVX_WHITE, CVX_WHITE, -1, CV_FILLED, 8);
-				if(centers!=NULL){
-					cvMoments(maskTemp, &moments, 1);
-					M00 = cvGetSpatialMoment(&moments, 0, 0);
-					M01 = cvGetSpatialMoment(&moments, 0, 1);
-					M10 = cvGetSpatialMoment(&moments, 1, 0);
-					centers[i].x=(int)(M10/M00);
-					centers[i].y=(int)(M01/M00);
-				}
-				if(bbs!=NULL){
-					bbs[i]=cvBoundingRect(c);
-				}
-				cvZero(maskTemp);
-				numFilled++;
-			}
-			if(find_ground){
-				double tmparea=fabs(cvContourArea(c));
-				if(tmparea<maxarea-1)continue;
-			}
-			cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
-		}
-		*num = numFilled;
-		cvReleaseImage(&maskTemp);
-	}else{
-		for(c=contours; c!=NULL; c=c->h_next){
-			if(find_ground){
-				double tmparea=fabs(cvContourArea(c));
-				if(tmparea<maxarea-1)continue;
-			}
-			cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
-		}
-	}
 }
 
 void cvMouseCallback(int mouseEvent, int x, int y, int flags, void* param){
@@ -276,43 +105,6 @@ void showHist(IplImage *frame, int isRight){
 	cvGetMinMaxHistValue(blue_hist, 0,&max_value,0,max_idx_blue+isRight);
 	cvGetMinMaxHistValue(green_hist, 0,&max_value,0,max_idx_green+isRight);
 	cout<<max_idx_red[isRight]<<' '<<max_idx_green[isRight]<<' '<<max_idx_blue[isRight]<<endl;
-	/*IplImage *hist_img = cvCreateImage(cvSize(hist_size*3,hist_height),IPL_DEPTH_8U,3);
-	cvZero(hist_img);
-	float max_value = 0;
-	cvGetMinMaxHistValue(red_hist, 0, &max_value, 0, &max_idx_red);
-	float real_max=0;
-	for(int i=1;i<hist_size;++i){
-		float bin_val=cvQueryHistValue_1D(red_hist,i);
-		if(bin_val>=real_max){max_idx_red = i;real_max=bin_val;}
-		int intensity=cvRound(bin_val*hist_height/max_value);
-		cvRectangle(hist_img,cvPoint(i,hist_height-1),
-			cvPoint((i+1),hist_height-intensity),
-			CV_RGB(255,0,0));
-	}
-	cvGetMinMaxHistValue(blue_hist, 0, &max_value, 0, &max_idx_blue);
-	real_max=0;
-	for(int i=1;i<hist_size;++i){
-		float bin_val=cvQueryHistValue_1D(blue_hist,i);
-		if(bin_val>=real_max){max_idx_blue = i;real_max=bin_val;}
-		int intensity=cvRound(bin_val*hist_height/max_value);
-		cvRectangle(hist_img,cvPoint(i+hist_size,hist_height-1),
-			cvPoint((i+1)+hist_size,hist_height-intensity),
-			CV_RGB(0,255,0));
-	}
-	cvGetMinMaxHistValue(green_hist, 0, &max_value, 0, &max_idx_green);
-	real_max=0;
-	for(int i=1;i<hist_size;++i){
-		float bin_val=cvQueryHistValue_1D(green_hist,i);
-		if(bin_val>=real_max){max_idx_green = i;real_max=bin_val;}
-		int intensity=cvRound(bin_val*hist_height/max_value);
-		cvRectangle(hist_img,cvPoint(i+hist_size*2,hist_height-1),
-			cvPoint((i+1)+hist_size*2,hist_height-intensity),
-			CV_RGB(0,0,255));
-	}
-	//cout<<max_idx_red<<' '<<max_idx_green<<' '<<max_idx_blue<<endl;
-	cvShowImage("gray",hist_img);
-	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
-	cvReleaseImage(&hist_img);*/
 }
 
 void findGround(IplImage *frame, IplImage *Imask, int isRight){
@@ -341,99 +133,6 @@ void findGround(IplImage *frame, IplImage *Imask, int isRight){
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
 }
 
-#define ZERO 1e-8
-#define DIS(a,b) sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y))
-#define SGN(x) (fabs(x)<ZERO?0:(x>0?1:-1))
-#define CROSS(a,b,c) ((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x))
-#define CMP(a,b) (a.x<b.x||(SGN(a.x-b.x)==0&&a.y<b.y))
-int hull_size=0;
-inline void ipush(CvPoint *S, CvPoint pt){S[hull_size++]=pt;}
-inline CvPoint ipop(CvPoint *S){return S[--hull_size];}
-inline void iswap(CvPoint *p, int x, int y){
-	CvPoint pt=p[x];
-	p[x]=p[y];
-	p[y]=pt;
-}
-inline bool icompare(CvPoint a,CvPoint b,CvPoint c){
-	int tmp=SGN(CROSS(a,b,c));
-	if(tmp!=0)return tmp>0;
-	else return DIS(a,b)<DIS(a,c);
-}
-void isort(CvPoint *p, int l,int r){
-	CvPoint tmp = p[(l + r) / 2];  
-	int i = l;  
-	int j = r;  
-	do{  
-		while(icompare(p[0],p[i],tmp))i++;  
-		while(icompare(p[0],tmp,p[j]))j--;  
-		if(i <= j)  {  
-			iswap(p,i,j);  
-			i++;  
-			j--;  
-		}  
-	}while(i <=j);  
-	if(i < r)isort(p,i,r);  
-	if(j > l)isort(p,l,j); 
-}
-int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
-	int min=-1;
-	hull_size=0;
-	for(int j=0;j<cnt;++j){
-		if(min==-1||CMP(pts[j],pts[min]))
-			min=j;
-	}
-	if(min!=0)iswap(pts,0,min);
-	isort(pts,1,cnt-1);
-	ipush(hull_p,pts[0]);
-	ipush(hull_p,pts[1]);
-	ipush(hull_p,pts[2]);
-
-	/*cout<<"after sort"<<endl;
-	for(int i=0;i<cnt;++i){
-		cvCircle(Imask, pts[i], 5, CVX_WHITE , CV_FILLED);
-		cout<<"("<<pts[i].x<<","<<pts[i].y<<")"<<endl;
-		cvShowImage("display",Imask);
-		cvWaitKey();
-	}*/
-
-	/*cvLine(Imask,pts[0],pts[1],cvScalar(255,0,255));//为了看清运行过程而加的  
-	cvLine(Imask,pts[1],pts[2],cvScalar(255,0,255));//为了看清运行过程而加的  
-	cvShowImage("display",Imask);  */
-
-	for(int i=3;i<cnt;++i){
-		while(true){
-			float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
-			float k2 = ((pts[i].y-hull_p[hull_size-2].y)*1.0f/(pts[i].x-hull_p[hull_size-2].x));
-			if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0||fabs(atan(k1)-atan(k2))<CV_PI/45){
-				/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
-				cvShowImage("display",Imask);*/
-				ipop(hull_p);
-			}else{
-				break;
-			}
-		}
-		/*cvLine(Imask,hull_p[hull_size - 1],pts[i],cvScalar(255,0,255));//为了看清运行过程而加的  
-		cvShowImage("display",Imask);  */
-
-		ipush(hull_p,pts[i]);
-	}
-
-	//connect the last node to the first
-	while(true){
-		float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
-		float k2 = ((pts[0].y-hull_p[hull_size-2].y)*1.0f/(pts[0].x-hull_p[hull_size-2].x));
-		if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[0])<0||fabs(atan(k1)-atan(k2))<CV_PI/45){
-			/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
-			cvShowImage("display",Imask);*/
-			ipop(hull_p);
-		}else{
-			break;
-		}
-	}
-
-	return hull_size;
-}
-
 CvPoint addLines[4][2];
 int addLineCnt=0;
 void callbackAddLines(int event, int x, int y, int flag, void *ustc){
@@ -455,19 +154,6 @@ void callbackAddLines(int event, int x, int y, int flag, void *ustc){
 			cvShowImage("display",Ismall);
 			addLineCnt++;
 		}
-	}
-}
-
-CvPoint additionalPoints[4];
-int additionalPointsCnt=0;
-void addPointCallback(int event, int x, int y, int flag, void *ustc){
-	if(event==CV_EVENT_LBUTTONDOWN){
-		additionalPoints[additionalPointsCnt].x=x*IMAGE_SCALE;
-		additionalPoints[additionalPointsCnt].y=y*IMAGE_SCALE;
-		cvCircle(frame, additionalPoints[additionalPointsCnt],5,CVX_RED,CV_FILLED);
-		cvResize(frame,Ismall);
-		cvShowImage("display",Ismall);
-		additionalPointsCnt++;
 	}
 }
 

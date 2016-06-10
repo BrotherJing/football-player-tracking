@@ -32,7 +32,7 @@ if(${OpenCV_VERSION} VERSION_LESS 2.3.1)
   message (FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}")
 endif()
 
-# file(GLOB sources FrameProcessor.cpp PreProcessor.cpp VideoAnalysis.cpp  VideoCapture.cpp)
+file(GLOB sources findHull.cpp)
 file(GLOB main Camera.cpp)
 
 file(GLOB_RECURSE bgs package_bgs/*.cpp package_bgs/*.c)
@@ -46,7 +46,7 @@ endif()
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-add_library(bgs SHARED ${bgs})
+add_library(bgs SHARED ${sources} ${bgs})
 target_link_libraries(bgs ${OpenCV_LIBS})
 set_property(TARGET bgs PROPERTY PUBLIC_HEADER ${bgs_include})
 

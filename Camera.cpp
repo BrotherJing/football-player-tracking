@@ -34,6 +34,8 @@ int playerCount=30;
 CvMat *H = cvCreateMat(3,3,CV_32F), *H_inv = cvCreateMat(3,3,CV_32F);
 CvMat *H2 = cvCreateMat(3,3,CV_32F), *H_r2l = cvCreateMat(3,3,CV_32F);
 CvPoint2D32f objPts[4], imgPts[4], objPtsRight[4];
+CvPoint ptsOnLine[4];
+bool foundPerspective=false;
 
 //histogram
 int max_idx_red[2], max_idx_blue[2], max_idx_green[2];
@@ -384,7 +386,7 @@ void isort(CvPoint *p, int l,int r){
 	if(i < r)isort(p,i,r);  
 	if(j > l)isort(p,l,j); 
 }
-int findHull2(CvPoint* pts, int cnt, CvPoint *hull_p){
+int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p){
 	int min=-1;
 	hull_size=0;
 	for(int j=0;j<cnt;++j){
@@ -396,12 +398,64 @@ int findHull2(CvPoint* pts, int cnt, CvPoint *hull_p){
 	ipush(hull_p,pts[0]);
 	ipush(hull_p,pts[1]);
 	ipush(hull_p,pts[2]);
+
+	/*cout<<"after sort"<<endl;
+	for(int i=0;i<cnt;++i){
+		cvCircle(Imask, pts[i], 5, CVX_WHITE , CV_FILLED);
+		cout<<"("<<pts[i].x<<","<<pts[i].y<<")"<<endl;
+		cvShowImage("display",Imask);
+		cvWaitKey();
+	}*/
+
+	/*cvLine(Imask,pts[0],pts[1],cvScalar(255,0,255));//为了看清运行过程而加的  
+	cvLine(Imask,pts[1],pts[2],cvScalar(255,0,255));//为了看清运行过程而加的  
+	cvShowImage("display",Imask);  */
+
 	for(int i=3;i<cnt;++i){
-		while(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0){
+		/*while(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0){
+			cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
 			ipop(hull_p);
+			cvShowImage("display",Imask);  
+			//cvWaitKey(100);
+		}*/
+		while(true){
+			float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
+			float k2 = ((pts[i].y-hull_p[hull_size-2].y)*1.0f/(pts[i].x-hull_p[hull_size-2].x));
+			//if(k2/k1<1.2)ipop(hull_p);
+			if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[i])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
+				/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
+				cvShowImage("display",Imask);*/
+				ipop(hull_p);
+			}else{
+				break;
+			}
 		}
+		/*cvLine(Imask,hull_p[hull_size - 1],pts[i],cvScalar(255,0,255));//为了看清运行过程而加的  
+		cvShowImage("display",Imask);  */
+
 		ipush(hull_p,pts[i]);
+		/*cout<<"push ("<<pts[i].x<<","<<pts[i].y<<")"<<endl;
+		cvWaitKey();*/
 	}
+
+	while(true){
+		float k1 = ((hull_p[hull_size-1].y-hull_p[hull_size-2].y)*1.0f/(hull_p[hull_size-1].x-hull_p[hull_size-2].x));
+		float k2 = ((pts[0].y-hull_p[hull_size-2].y)*1.0f/(pts[0].x-hull_p[hull_size-2].x));
+		//if(k2/k1<1.2)ipop(hull_p);
+		if(CROSS(hull_p[hull_size-2], hull_p[hull_size-1],pts[0])<0||fabs(atan(k1)-atan(k2))<CV_PI/60){
+			/*cvLine(Imask,hull_p[hull_size - 2],hull_p[hull_size-1],cvScalar(0,0,0));//为了看清运行过程而加的  
+			cvShowImage("display",Imask);*/
+			ipop(hull_p);
+		}else{
+			break;
+		}
+	}
+	/*cvLine(Imask,hull_p[hull_size - 1],pts[0],cvScalar(255,0,255));//为了看清运行过程而加的  
+	cvShowImage("display",Imask);  
+	cvPolyLine(Imask,&hull_p,&hull_size,1,1,cvScalar(0,0,255),2);
+	cvWaitKey();*/
+
+	return hull_size;
 }
 
 /*int findHull(CvPoint* pts, int cnt, CvPoint *final){
@@ -425,7 +479,7 @@ int findHull2(CvPoint* pts, int cnt, CvPoint *hull_p){
 	return hullCnt;
 }*/
 
-void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRight){
+bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRight, CvPoint* result=NULL){
 	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
 	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
@@ -439,20 +493,7 @@ void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	cvShowImage("display",red);
 	cvWaitKey();*/
 
-	/*cvInRangeS(blue, cvScalar(150),cvScalar(255),Imask);
-	cvShowImage("display", Imask);
-	cout<<"blue"<<endl;
-	cvWaitKey();
-	cvInRangeS(green, cvScalar(150), cvScalar(255), Imaskt);
-	cvShowImage("display", Imaskt);
-	cout<<"green"<<endl;
-	cvWaitKey();
-	cvAnd(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(150), cvScalar(255), Imaskt);
-	cvShowImage("display", Imaskt);
-	cout<<"red"<<endl;
-	cvWaitKey();
-	cvAnd(Imask,Imaskt,Imask);*/
+	
 	cvInRangeS(blue, cvScalar(0), cvScalar(max_idx_blue[isRight]+40), Imask);
 	/*cvShowImage("display", Imask);
 	cout<<"blue"<<endl;
@@ -494,7 +535,7 @@ void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 		cvClearMemStorage(storage);
 	}
 	CvSeq *lineseq=0;
-	lineseq=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,100,50,50);
+	lineseq=cvHoughLines2(Imask,storage,CV_HOUGH_PROBABILISTIC,1,CV_PI/180,100,200,50);
 	cvZero(Imask);
 	CvPoint lines[lineseq->total][2];
 	float k_b[lineseq->total][2];
@@ -532,17 +573,17 @@ void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 		}
 		cvLine(Imask,line[0],line[1],CVX_WHITE,1,CV_AA,0);
 	}
-	cvShowImage("display", Imask);
-	cvWaitKey();
+	/*cvShowImage("display", Imask);
+	cvWaitKey();*/
 
-	cout<<"found "<<total<<endl;
+	/*cout<<"found "<<total<<endl;
 	cvZero(Imask);
 	for(int i=0;i<total;++i){
 		cvLine(Imask,lines[i][0],lines[i][1],CVX_WHITE,1,CV_AA,0);
-	}
+	}*/
 
 	CvSize img_size=cvGetSize(frame);
-	cout<<"image size:"<<img_size.width<<"x"<<img_size.height<<endl;
+	//cout<<"image size:"<<img_size.width<<"x"<<img_size.height<<endl;
 	CvPoint cross[total*(total-1)/2];
 	int cross_cnt=0;
 	for(int i=0;i<total-1;++i){
@@ -561,20 +602,39 @@ void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 			int len1 = (lines[i][1].x-lines[i][0].x)*(lines[i][1].x-lines[i][0].x)+(lines[i][1].y-lines[i][0].y)*(lines[i][1].y-lines[i][0].y);
 			int len2 = (lines[j][1].x-lines[j][0].x)*(lines[j][1].x-lines[j][0].x)+(lines[j][1].y-lines[j][0].y)*(lines[j][1].y-lines[j][0].y);
 
-			if(len_to1>len1*1.5&&len_to2>len2*1.5)continue;
+			if(len_to1>len1*1.7&&len_to2>len2*1.7)continue;
 			cross[cross_cnt].x=x;
 			cross[cross_cnt].y=y;
 			cross_cnt++;
 		}
 	}
+	/*for(int i=0;i<cross_cnt;++i){
+		cvCircle(Imask, cross[i], 5, CVX_WHITE , CV_FILLED);
+		cout<<"("<<cross[i].x<<","<<cross[i].y<<")"<<endl;
+	}
+	cvShowImage("display", Imask);
+	cvWaitKey();*/
+
+	cvZero(Imask);
 	CvPoint final[cross_cnt];
-	int hull_cnt = findHull2(cross,cross_cnt,final);
+	int hull_cnt = findHull2(Imask, cross,cross_cnt,final);
+	if(hull_cnt!=4)return false;
 	for(int i=0;i<hull_cnt;++i){
+		//cvCircle(Imask, final[i], 5, CVX_WHITE , CV_FILLED);
+		cout<<"("<<final[i].x<<","<<final[i].y<<")"<<endl;
+	}
+	if(result!=NULL){
+		result[0]=final[1];
+		result[1]=final[2];
+		result[2]=final[0];
+		result[3]=final[3];
+	}
+	/*for(int i=0;i<hull_cnt;++i){
 		cvCircle(Imask, final[i], 5, CVX_WHITE , CV_FILLED);
 		cout<<"("<<final[i].x<<","<<final[i].y<<")"<<endl;
 	}
 	cvShowImage("display", Imask);
-	cvWaitKey();
+	cvWaitKey();*/
 
 
 	/*cvClearMemStorage(storage);
@@ -588,82 +648,91 @@ void findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 
 
 	cvReleaseImage(&blue);cvReleaseImage(&green);cvReleaseImage(&red);
+	return true;
+}
+
+void getPerspectiveTransform(CvPoint *pts){
+
+	/*imgPts[0].x=szBird.width/2; imgPts[0].y=szBird.height/2;
+	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
+	imgPts[2].x=szBird.width/2; imgPts[2].y=szBird.height;
+	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;*/
+	imgPts[0].x=0; imgPts[0].y=szBird.height/2;
+	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
+	imgPts[2].x=0; imgPts[2].y=szBird.height;
+	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;
+	
+	for(int i=0;i<4;++i){
+		objPts[i].x=(float)pts[i].x/2;
+		objPts[i].y=(float)pts[i].y/2;
+	}
+	cvGetPerspectiveTransform(imgPts, objPts, H);
 }
 
 int main(int argc,char **argv){
 
-	IBGS *bgs;
+	//IBGS *bgs;
 	//bgs = new FrameDifferenceBGS;//static people will disappear!!
-	bgs = new AdaptiveBackgroundLearning;//use background, with shadow in the back
+	//bgs = new AdaptiveBackgroundLearning;//use background, with shadow in the back
 	namedWindow("display",WINDOW_AUTOSIZE);
 	namedWindow("displayRight", WINDOW_AUTOSIZE);
 	namedWindow("lines",WINDOW_AUTOSIZE);
 	namedWindow("bird",WINDOW_AUTOSIZE);
 	namedWindow("bird2",WINDOW_AUTOSIZE);
 	CvCapture *capture = cvCreateFileCapture(argv[1]);
-	CvCapture *captureRight = cvCreateFileCapture(argv[2]);
+	//CvCapture *captureRight = cvCreateFileCapture(argv[2]);
 	frame=cvQueryFrame(capture);
-	frameRight=cvQueryFrame(captureRight);
+	//frameRight=cvQueryFrame(captureRight);
 
 	AllocImages(frame);
 
 	cvResize(frame, Ismall);
 	cvShowImage("display",Ismall);
-	cvResize(frameRight, IsmallRight);
-	cvShowImage("displayRight", IsmallRight);
 	showHist(frame,0);
-	showHist(frameRight,1);
+	/*cvResize(frameRight, IsmallRight);
+	cvShowImage("displayRight", IsmallRight);
+	showHist(frameRight,1);*/
 
 	setMouseCallback("display",cvMouseCallback);
-	setMouseCallback("displayRight",cvMouseCallback);
-	while(cnt<8)cvWaitKey(0);//click to set obj points
+	//setMouseCallback("displayRight",cvMouseCallback);
+	//while(cnt<4)cvWaitKey(0);//click to set obj points
 
-	imgPts[0].x=szBird.width/2; imgPts[0].y=szBird.height/2;
-	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
-	imgPts[2].x=szBird.width/2; imgPts[2].y=szBird.height;
-	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;
-	
-	cvGetPerspectiveTransform(imgPts, objPts, H);
-	cvGetPerspectiveTransform(imgPts, objPtsRight, H2);
+	/*cvGetPerspectiveTransform(imgPts, objPtsRight, H2);
 	cvInvert(H, H_inv);
 	cvGEMM(H2, H_inv, 1.0, NULL, 0.0, H_r2l);
 
 	cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
 			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
-	cvShowImage("bird",birdsImg);
+	cvShowImage("bird",birdsImg);*/
 	
 	while(1){
 		frame=cvQueryFrame(capture);
-		frameRight=cvQueryFrame(captureRight);
-		if(!frame||!frameRight)break;
-
-		cvResize(frame, Ismall);
-		cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
-			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+		//frameRight=cvQueryFrame(captureRight);
+		if(!frame
+			//||!frameRight
+			)
+			break;
 
 		findGround(frame, Imask,0);
 		cvCvtScale(Imask,ImaskPlayers,1,0);
 		find_connected_components(Imask);
-		findLines(frame, Imask, ImaskLines, 0);
-		cvShowImage("lines",ImaskLines);
+
+		cvResize(frame, Ismall);
+		if(!foundPerspective){
+			foundPerspective = findLines(frame, Imask, ImaskLines, 0, ptsOnLine);
+			getPerspectiveTransform(ptsOnLine);
+		}else{
+			cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
+				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+		}
 
 		cvNot(ImaskPlayers, ImaskPlayers);
-
-		/*cv::Mat img_input(frame);
-		cv::Mat img_mask;
-		cv::Mat img_bkgmodel;
-		bgs->process(img_input, img_mask, img_bkgmodel); // by default, it shows automatically the foreground mask image
-		if(img_mask.empty()){
-			continue;
-		}
-		IplImage iImaskPlayers = IplImage(img_mask);*/
-		
 		cvAnd(Imask,ImaskPlayers,ImaskPlayers);
 		//cvAnd(ImaskPlayers,&iImaskPlayers,&iImaskPlayers);
 		//find_connected_components(ImaskPlayers, 0);
 		find_connected_components(ImaskPlayers, 0, 0, 60, &playerCount, playerRect, playerCenter);
 		
-		cvZero(birdsImg);
+		//cvZero(birdsImg);
 		for(int i=0;i<playerCount;++i){
 			CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
 			pt.x=pt.x/IMAGE_SCALE;
@@ -681,7 +750,7 @@ int main(int argc,char **argv){
 			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);*/
 		cvShowImage("bird", birdsImg);
 
-		findGround(frameRight, Imask,0);
+		/*findGround(frameRight, Imask,0);
 		cvCvtScale(Imask, ImaskPlayers, 1, 0);
 		find_connected_components(Imask);
 		cvNot(ImaskPlayers, ImaskPlayers);
@@ -691,7 +760,7 @@ int main(int argc,char **argv){
 		cvWarpPerspective(ImaskSmall, ImaskBirdt, H2, CV_INTER_LINEAR|
 			CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
 		cvShowImage("bird2", ImaskBirdt);
-		cvAnd(ImaskBird, ImaskBirdt, ImaskBird);
+		cvAnd(ImaskBird, ImaskBirdt, ImaskBird);*/
 
 		char c = cvWaitKey(33);
 		if(c==27)break;

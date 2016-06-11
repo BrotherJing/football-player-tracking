@@ -9,9 +9,6 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <vector>
 
-#include "header/qcvcamshifttracker.h"
-
-
 #define CV_CONTOUR_APPROX_LEVEL 1
 #define CVCLOSE_ITR 2
 #define CVCLOSE_ITR_SMALL 1

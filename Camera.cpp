@@ -14,13 +14,6 @@ IplImage *ImaskSmall, *ImaskSmall2, *ImaskBirdt;
 CvSize sz, szBird;
 int cnt=0;
 
-// tracking
-// Variables needed by callback func ...
-vector<QcvCAMshiftTracker> camShiftTrackers;
-bool selectObject = false;
-cv::Point origin;
-cv::Rect selection;
-
 //contour
 CvRect playerRect[30];
 CvPoint playerCenter[30];
@@ -67,40 +60,6 @@ void AllocImages(IplImage *frame){
 void DeallocateImages(){
 	cvReleaseImage(&Iscratch);cvReleaseImage(&Iscratch2);
 	cvReleaseImage(&Imaskt);
-}
-
-// Callback function used in labeler image show window ...
-static void camShiftLabelerOnMouse( int event, int x, int y, int, void* )
-{
-    if( selectObject )
-    {
-        selection.x = MIN(x, origin.x);
-        selection.y = MIN(y, origin.y);
-        selection.width = std::abs(x - origin.x);
-        selection.height = std::abs(y - origin.y);
-
-        // 这个是干什么的
-        selection &= cv::Rect(0, 0, QcvCAMshiftTracker::getMainImage().cols, QcvCAMshiftTracker::getMainImage().rows);
-    }
-
-    switch( event )
-    {
-    case CV_EVENT_LBUTTONDOWN://鼠标向下
-        origin = cv::Point(x,y);
-        selection = cv::Rect(x,y,0,0);
-        selectObject = true;
-        break;
-    case CV_EVENT_LBUTTONUP://鼠标向上
-        selectObject = false;
-        if( selection.width > 0 && selection.height > 0 )
-        {
-            // 加入一个新的 newTracker
-            QcvCAMshiftTracker newTracker;//these two lines are important!!
-            newTracker.setCurrentRect(selection);
-            camShiftTrackers.push_back(newTracker);
-        }
-        break;
-    }
 }
 
 void showHist(IplImage *frame, int isRight){
@@ -389,7 +348,6 @@ void getPerspectiveTransform(CvPoint *pts){
 int main(int argc,char **argv){
 
 	bool paused=false;
-	cv::Mat m_frame;
 
 	namedWindow("display",WINDOW_AUTOSIZE);
 	namedWindow("displayRight", WINDOW_AUTOSIZE);
@@ -404,8 +362,6 @@ int main(int argc,char **argv){
 	cvResize(frame, Ismall);
 	cvShowImage("display",Ismall);
 	showHist(frame,0);
-
-	setMouseCallback( "display", camShiftLabelerOnMouse, 0 );
 	
 	while(1){
 		if(!paused){
@@ -424,7 +380,6 @@ int main(int argc,char **argv){
 				foundPerspective = findLines(frame, Imask, ImaskLines, 0, ptsOnLine);
 				if(foundPerspective){
 					getPerspectiveTransform(ptsOnLine);
-					setMouseCallback( "display", camShiftLabelerOnMouse, 0 );
 				}
 				continue;
 			}
@@ -448,20 +403,6 @@ int main(int argc,char **argv){
 			}
 			playerCount=30;
 			cvShowImage("bird", birdsImg);
-
-			m_frame=Mat(Ismall);
-			QcvCAMshiftTracker::setMainImage(m_frame);
-			for(int i=0; i<camShiftTrackers.size(); i++){
-				if(camShiftTrackers[i].trackCurrentRect().boundingRect().area() <= 1)
-					continue;
-				cv::ellipse(m_frame, camShiftTrackers[i].trackCurrentRect(), cv::Scalar(0, 255, 0), 2, CV_AA);
-				cv::rectangle(m_frame, camShiftTrackers[i].trackCurrentRect().boundingRect(), cv::Scalar(0, 255, 0), 2, CV_AA);
-			}
-		}
-
-		if( selectObject && selection.width > 0 && selection.height > 0 ){
-			cv::Mat roi(m_frame, selection);
-			cv::bitwise_not(roi, roi);
 		}
 
 		cvShowImage("display", Ismall);
@@ -470,11 +411,9 @@ int main(int argc,char **argv){
 		if(c==27)break;
 		switch(c){
 		case 'p':paused = !paused;break;
-		case 'k':camShiftTrackers.clear();break;
 		default:break;
 		}
 	}
-	camShiftTrackers.clear();
 	DeallocateImages();
 	cvReleaseCapture(&capture);
 	cvDestroyWindow("display");

@@ -32,7 +32,7 @@ if(${OpenCV_VERSION} VERSION_LESS 2.3.1)
   message (FATAL_ERROR "OpenCV version is not compatible: ${OpenCV_VERSION}")
 endif()
 
-file(GLOB sources findHull.cpp qcvcamshifttracker.cpp)
+file(GLOB sources findHull.cpp)
 file(GLOB main Camera.cpp)
 
 file(GLOB_RECURSE bgs package_bgs/*.cpp package_bgs/*.c)

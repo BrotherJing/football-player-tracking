@@ -209,3 +209,62 @@ void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0,
 		}
 	}
 }
+
+void find_player_teams(IplImage *frame, CvRect *bbs, int *labels){
+
+}
+
+Tracker::Tracker(CvRect c, CvPoint p){
+	no_found_cnt = 0;
+	move_dist = numeric_limits<float>::max();
+
+	bbox = c;
+	context = cvRect(c.x-c.width/2, c.y-c.height/2, (int)(c.width*1.5), (int)(c.height*1.5));
+	center = p;
+	last = center;
+}
+
+const int MAX_NO_FOUND = 5;
+
+void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt){
+
+	bool *isNewPoint = new bool[cnt];
+	for(int i=0;i<cnt;++i)isNewPoint[i]=true;
+
+	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
+		float dist_min = numeric_limits<float>::max();
+		int best_choice=-1;
+		for(int i=0;i<cnt;++i){
+			if(centers[i].x>it->context.x&&centers[i].x<it->context.x+it->context.width&&
+				centers[i].y>it->context.y&&centers[i].y<it->context.y+it->context.height){
+				isNewPoint[i]=false;
+				float dist=DIS(it->center, centers[i]);
+				if(dist<dist_min){
+					dist_min = dist;
+					best_choice=i;
+				}
+			}
+		}	
+		if(best_choice!=-1){// candidate found
+			it->no_found_cnt=0;
+			int x=bbs[best_choice].x, y=bbs[best_choice].y, w=bbs[best_choice].width, h=bbs[best_choice].height;
+			it->context = cvRect(x-w/2, y-h/2, (int)(w*1.5), (int)(h*1.5));
+			it->bbox = bbs[best_choice];
+			it->last = it->center;
+			it->center = cvPoint(centers[best_choice].x, centers[best_choice].y);
+		}else{
+			it->no_found_cnt++;
+			if(it->no_found_cnt>MAX_NO_FOUND){
+				it = trackers.erase(it);
+				continue;
+			}
+		}
+		++it;
+	}
+
+	for(int i=0;i<cnt;++i){
+		if(isNewPoint[i]){
+			trackers.push_back(Tracker(bbs[i], centers[i]));
+		}
+	}
+}

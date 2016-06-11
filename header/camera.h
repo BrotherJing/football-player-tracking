@@ -8,10 +8,16 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <vector>
+#include <limits.h>
+// k-means
+#include <cxcore.h>
+#include "qcvcamshifttracker.h"
 
 #define CV_CONTOUR_APPROX_LEVEL 1
 #define CVCLOSE_ITR 2
 #define CVCLOSE_ITR_SMALL 1
+
+using namespace std;
 
 const int WIDTH = 500;
 const int HEIGHT = 680;
@@ -47,5 +53,18 @@ CvPoint transformPoint(const CvPoint point, const CvMat* matrix);
 void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull0=1, float perimScale=60, 
 	int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL, int find_lines=0);
 
+
+//tracking
+class Tracker{
+public:
+	CvRect context;
+	CvRect bbox;
+	CvPoint center, last;
+	float move_dist;
+	int no_found_cnt;
+
+	Tracker(CvRect, CvPoint);
+};
+void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
 
 #endif

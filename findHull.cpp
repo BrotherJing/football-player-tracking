@@ -210,8 +210,42 @@ void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0,
 	}
 }
 
-void find_player_teams(IplImage *frame, CvRect *bbs, int *labels){
+void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels, int cnt){
+	cv::Rect roi;
+	cv::Mat hist;
+	float range[] = {0, 255};
+	const int histSize = 256;
+	const float *ranges[] = {range};
+	for(int i=0;i<cnt;++i){
+		roi.x=bbs[i].x; roi.y=bbs[i].y;
+		roi.width=bbs[i].width; roi.height=bbs[i].height;
+		Mat roi_mat(Mat(frame), roi);
+		Mat roi_mask(Mat(mask), roi);
 
+		cv::calcHist(&roi_mat, 1,0, roi_mask, hist, 1, &histSize, ranges);
+		cv::normalize(hist, hist, 0, 255, CV_MINMAX);
+		double maxVal = 0;
+		cv::Point maxPoint;
+		cv::minMaxLoc(hist, 0, &maxVal, 0,&maxPoint);
+		int hpt = static_cast<int>(0.9*256);
+
+    		cv::Mat histImg(256, 256, CV_8UC3, cv::Scalar(0,0,0));
+		for(int h=0; h<255; h++){
+			float binVal = hist.at<float>(h);
+			float binVal2 = hist.at<float>(h+1);
+			int intensity = static_cast<int>(binVal*hpt/maxVal);
+			int intensity2 = static_cast<int>(binVal2*hpt/maxVal);
+			cv::line(histImg, cv::Point(h,256-intensity),
+			cv::Point(h,256-intensity2), cv::Scalar(255,255,255));
+		}
+		cout<<"Loc "<<bbs[i].x<<","<<bbs[i].y<<" : "<<maxPoint.x<<endl;
+		imshow("display", histImg);
+		cvRectangle(frame, cvPoint(roi.x,roi.y),
+	                          cvPoint(roi.x+roi.width, roi.y+roi.height),
+	                          cvScalar(0,0,0), -1, 8 );
+		cvShowImage("bird", frame);
+		cvWaitKey(0);
+	}
 }
 
 Tracker::Tracker(CvRect c, CvPoint p){

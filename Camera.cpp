@@ -89,6 +89,11 @@ void DeallocateImages(){
 	cvReleaseImage(&Iground);
 }
 
+void splitFrame(IplImage *frame){
+	cvCvtScale(frame, scratch, 1, 0);
+	cvSplit(scratch,blue,green,red,0);
+}
+
 // Callback function used in labeler image show window ...
 static void camShiftLabelerOnMouse( int event, int x, int y, int, void* )
 {
@@ -124,12 +129,7 @@ static void camShiftLabelerOnMouse( int event, int x, int y, int, void* )
 }
 
 void showHist(IplImage *frame, int isRight){
-	IplImage *scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
-	IplImage *blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	IplImage *green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	IplImage *red = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
-	cvCvtScale(frame, scratch, 1, 0);
-	cvSplit(scratch,blue,green,red,0);
+	splitFrame(frame);
 	//cvCvtColor(frame, gray, CV_BGR2GRAY);
 	int hist_size=255;
 	//int hist_height=256;
@@ -148,11 +148,6 @@ void showHist(IplImage *frame, int isRight){
 	cvGetMinMaxHistValue(blue_hist, 0,&max_value,0,max_idx_blue+isRight);
 	cvGetMinMaxHistValue(green_hist, 0,&max_value,0,max_idx_green+isRight);
 	cout<<max_idx_red[isRight]<<' '<<max_idx_green[isRight]<<' '<<max_idx_blue[isRight]<<endl;
-}
-
-void splitFrame(IplImage *frame){
-	cvCvtScale(frame, scratch, 1, 0);
-	cvSplit(scratch,blue,green,red,0);
 }
 
 void findGround(IplImage *frame, IplImage *Imask, int isRight){
@@ -456,6 +451,7 @@ int main(int argc,char **argv){
 			find_connected_components(Imask, 0, 0, 60, &playerCount, playerRect, playerCenter);
 			//trackPlayers(trackers, playerRect, playerCenter, playerCount);
 			//cout<<trackers.size()<<endl;
+			find_player_teams(green, Imask, playerRect, NULL, playerCount);
 			for(int i=0;i<playerCount;++i){
 				/*CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
 				pt.x=pt.x/IMAGE_SCALE;
@@ -475,7 +471,7 @@ int main(int argc,char **argv){
 			}
 			cvAdd(Ismall, Itrace, Ismall);*/
 			playerCount=30;
-			cvShowImage("bird", birdsImg);
+			cvShowImage("bird", green);
 			//cvWaitKey(0);
 
 			/*m_frame=Mat(Ismall);

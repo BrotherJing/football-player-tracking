@@ -66,5 +66,6 @@ public:
 	Tracker(CvRect, CvPoint);
 };
 void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
+void find_player_teams(IplImage *frame, IplImage *mask,  CvRect *bbs, int *labels, int cnt);
 
 #endif

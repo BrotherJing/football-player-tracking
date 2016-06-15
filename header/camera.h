@@ -46,6 +46,11 @@ const int MARGIN_WHITE = 60;
 
 const float LOWPASS_FILTER_RATE = 0.8;
 
+//team
+const int TEAM_1 = 1;
+const int TEAM_2 = 2;
+const int TEAM_UNKNOWN = 3;
+
 //some function
 #define ZERO 1e-8
 #define DIS(a,b) sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y))
@@ -67,14 +72,18 @@ public:
 	CvRect bbox;
 	CvPoint center, last, foot;
 
+	static int cnt;
+	int id;
 	int bbox_id;
 	int no_found_cnt;
+	int team;
 	CvScalar color;
 
-	Tracker(CvRect, CvPoint);
+	Tracker(CvRect, CvPoint, int);
 };
-void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l);
-void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
+void trackPlayers(IplImage *frame, vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l);
+void trackPlayersSimple(IplImage *frame, IplImage *mask, vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
 void find_player_teams(IplImage *frame, IplImage *mask,  CvRect *bbs, int *labels, int cnt);
+int find_player_team(IplImage *frame, IplImage *mask, CvRect bbs);
 
 #endif

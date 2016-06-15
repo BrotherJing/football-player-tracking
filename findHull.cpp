@@ -200,12 +200,41 @@ void find_connected_components(IplImage *mask, int find_ground, float perimScale
 	}
 }
 
-void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels, int cnt){
-	/*cv::Rect roi;
+int find_player_team(IplImage *frame, IplImage *mask, CvRect bbs){
+	cv::Rect roi;
 	cv::Mat hist;
-	float range[] = {0, 255};
-	const int histSize = 256;
-	const float *ranges[] = {range};
+	roi.x=bbs.x; roi.y=bbs.y;
+	roi.width=bbs.width; roi.height=bbs.height;
+	Mat roi_mat(Mat(frame), roi);
+	Mat roi_mask(Mat(mask), roi);
+	IplImage *Imask = cvCreateImage(cvSize(roi.width, roi.height), IPL_DEPTH_8U, 1);
+	cvZero(Imask);
+
+	IplImage roi_img = roi_mat;
+	cvInRangeS(&roi_img, cvScalar(0), cvScalar(10), Imask);
+	int area1 = cvCountNonZero(Imask);
+	//cout<<"team 1 area: "<<area1<<endl;
+	cvZero(Imask);
+	cvInRangeS(&roi_img, cvScalar(40), cvScalar(60), Imask);
+	int area2 = cvCountNonZero(Imask);
+	//cout<<"team 2 area: "<<area2<<endl;
+
+	if(area1>area2/2){
+		//cout<<"team 1!"<<endl;
+		return TEAM_1;
+	}else if(area2>100||area2>6*area1){
+		//cout<<"team 2!"<<endl;
+		return TEAM_2;
+	}
+	return TEAM_UNKNOWN;
+}
+
+void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels, int cnt){
+	cv::Rect roi;
+	cv::Mat hist;
+	//float range[] = {0, 255};
+	//const int histSize = 256;
+	//const float *ranges[] = {range};
 	for(int i=0;i<cnt;++i){
 		roi.x=bbs[i].x; roi.y=bbs[i].y;
 		roi.width=bbs[i].width; roi.height=bbs[i].height;
@@ -217,31 +246,35 @@ void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels
 		IplImage roi_img = roi_mat;
 		cvInRangeS(&roi_img, cvScalar(0), cvScalar(10), Imask);
 		int area = cvCountNonZero(Imask);
-		cout<<"team 1 area: "<<area<<endl;
+		//cout<<"team 1 area: "<<area<<endl;
 		cvZero(Imask);
 		cvInRangeS(&roi_img, cvScalar(40), cvScalar(60), Imask);
 		area = cvCountNonZero(Imask);
-		cout<<"team 2 area: "<<area<<endl;
+		//cout<<"team 2 area: "<<area<<endl;
 		cvRectangle(frame, cvPoint(roi.x,roi.y),
 	                          cvPoint(roi.x+roi.width, roi.y+roi.height),
 	                          cvScalar(0,0,0), -1, 8 );
 		cvShowImage("bird", frame);
 		cvWaitKey(0);
-	}*/
+	}
 }
 
 extern CvRNG rng;
 
-Tracker::Tracker(CvRect c, CvPoint p){
+int Tracker::cnt=0;
+
+Tracker::Tracker(CvRect c, CvPoint p, int t){
 	no_found_cnt = 0;
 	bbox_id = -1;
+	id = cnt++;
+	team = t;
 
 	bbox = c;
 	context = cvRect(c.x-c.width/2, c.y-c.height/2, (int)(c.width*2), (int)(c.height*2));
 	center = p;
 	last = center;
 	foot = cvPoint(center.x, center.y+bbox.height/2+10);
-	color = cvScalar(cvRandInt(&rng)%255, cvRandInt(&rng)%255, cvRandInt(&rng)%255);
+	color = cvScalar(cvRandInt(&rng)%200, cvRandInt(&rng)%200, cvRandInt(&rng)%200);
 }
 
 const int MAX_NO_FOUND = 5;
@@ -250,13 +283,14 @@ int *numTrackerPerPoint = new int[30];
 
 //vector<Tracker> trackersRight;
 
-void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt){
+void trackPlayersSimple(IplImage *frame, IplImage *mask, vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt){
 
 	for(int i=0;i<cnt;++i){
 		isNewPoint[i]=true;
 		numTrackerPerPoint[i]=0;
 	}
 
+	//find_player_teams(h, Imask, playerRect, NULL, playerCount);
 	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
 		float dist_min = numeric_limits<float>::max();
 		int best_choice=-1;
@@ -311,12 +345,13 @@ void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers
 
 	for(int i=0;i<cnt;++i){
 		if(isNewPoint[i]){
-			trackers.push_back(Tracker(bbs[i], centers[i]));
+			int team = find_player_team(frame, mask, bbs[i]);
+			trackers.push_back(Tracker(bbs[i], centers[i], team));
 		}
 	}
 }
 
-void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l){
+void trackPlayers(IplImage *frame, IplImage *mask, vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l){
 
 	for(int i=0;i<cnt;++i){
 		isNewPoint[i]=true;
@@ -415,7 +450,8 @@ void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int 
 
 	for(int i=0;i<cnt;++i){
 		if(isNewPoint[i]){
-			trackers.push_back(Tracker(bbs[i], centers[i]));
+			int team = find_player_team(frame, mask, bbs[i]);
+			trackers.push_back(Tracker(bbs[i], centers[i], team));
 		}
 	}
 }

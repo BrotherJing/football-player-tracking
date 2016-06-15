@@ -12,7 +12,7 @@ IplImage *Imaskt, *Imask, *ImaskBird, *ImaskPlayers, *ImaskLines;
 IplImage *ImaskRight, *ImaskBirdRight, *ImaskPlayersRight, *ImaskLinesRight;
 IplImage *scratch[2];
 IplImage *blue[2], *green[2], *red[2];
-IplImage *h, *s, *v;
+IplImage *h, *s, *v, *hsv;
 CvSize sz, szBird;
 int cnt=0;
 
@@ -22,12 +22,12 @@ vector<QcvCAMshiftTracker> camShiftTrackers;
 bool selectObject = false;
 cv::Point origin;
 cv::Rect selection;
-Mat hsv, hue;
 int ch[] = {0, 0};
 
 vector<Tracker> trackers;
 vector<Tracker> trackersRight;
 CvRNG rng = cvRNG(0xffffffff);
+CvFont font;
 
 //contour
 CvRect playerRect[30];
@@ -86,8 +86,11 @@ void AllocImages(IplImage *frame){
  	h = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	s = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	v = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	hsv = cvCreateImage(cvGetSize(frame), frame->depth,frame->nChannels);
 
 	cvZero(Itrace);
+
+	cvInitFont(&font, CV_FONT_HERSHEY_PLAIN, 1.0,1.0);
 }
 
 void DeallocateImages(){
@@ -438,6 +441,7 @@ int main(int argc,char **argv){
 	//bgs = new FrameDifferenceBGS;//static people will disappear!!
 	//bgs = new AdaptiveBackgroundLearning;//use background, with shadow in the back
 
+	char str[10];
 	bool paused=false;
 	cv::Mat m_frame;
 
@@ -499,7 +503,7 @@ int main(int argc,char **argv){
 			cvNot(Imask, Imask);
 			cvSub(Imask, ImaskLines, Imask);
 			cvAnd(Iground,Imask,Imask);
-			find_connected_components(Imask, 0, 60, &playerCount1, playerRect, playerCenter, false);
+			find_connected_components(Imask, 0, 60, &playerCount1, playerRect, playerCenter, true);
 
 			/*cv::Mat img_input(frame);
 			cv::Mat img_mask;
@@ -534,25 +538,34 @@ int main(int argc,char **argv){
 				playerCenterRight[i].y*=IMAGE_SCALE;
 			}*/
 
-			//trackPlayers(trackers, playerRect, playerCenter, playerCount1, playerRectRight, playerCenterRight, playerCount2);
-			trackPlayersSimple(trackersRight, playerRectRight, playerCenterRight, playerCount2);
-			//trackPlayersSimple(trackers, playerRect, playerCenter, playerCount1);
-			trackPlayers(trackers, playerRect, playerCenter, playerCount1, trackersRight, H_r2l);
-			//cout<<trackers.size()<<endl;
-			/*IplImage *hsv = cvCreateImage(cvGetSize(frame), frame->depth,frame->nChannels);
 			cvCvtColor(frame, hsv, CV_BGR2HSV);
-			cvSplit(hsv,h,s,v,0);*/
+			cvSplit(hsv,h,s,v,0);
 
-			//find_player_teams(h, Imask, playerRect, NULL, playerCount);
+			/*for(int i=0;i<playerCount1;++i){
+				find_player_team(h,Imask, playerRect[i]);
+				cvRectangle(h, cvPoint(playerRect[i].x,playerRect[i].y),
+			                          cvPoint(playerRect[i].x+playerRect[i].width, playerRect[i].y+playerRect[i].height),
+			                          cvScalar(0,0,0), -1, 8 );
+				cvShowImage("bird", h);
+				cvWaitKey(0);
+			}*/
+
+			//trackPlayers(trackers, playerRect, playerCenter, playerCount1, playerRectRight, playerCenterRight, playerCount2);
+			trackPlayersSimple(h, Imask, trackersRight, playerRectRight, playerCenterRight, playerCount2);
+			trackPlayersSimple(h, Imask, trackers, playerRect, playerCenter, playerCount1);
+			//trackPlayers(trackers, playerRect, playerCenter, playerCount1, trackersRight, H_r2l);
+			//cout<<trackers.size()<<endl;
+			//find_player_teams(h, Imask, playerRect, NULL, playerCount1);
+
 			for(int i=0;i<trackersRight.size();++i){
 				cvCircle(IsmallRight, cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), 5, CVX_WHITE, CV_FILLED);
-				CvPoint pt = transformPoint(cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), H_r2l);
+				//CvPoint pt = transformPoint(cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), H_r2l);
 				CvPoint pt2 = transformPoint(cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), H2);
 				//CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
 				//pt.x=pt.x/IMAGE_SCALE;
 				//pt.y=pt.y/IMAGE_SCALE;
 				//pt = transformPoint(pt, H);
-				cvCircle(Ismall, pt, 5, cvScalar(255,0,0) , CV_FILLED);
+				//cvCircle(Ismall, pt, 5, cvScalar(255,0,0) , CV_FILLED);
 				cvCircle(birdsImg, pt2, 5, cvScalar(255,0,0) , CV_FILLED);//right
 				/*cvRectangle(Ismall, cvPoint(playerRect[i].x/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE),
 					cvPoint(playerRect[i].x/IMAGE_SCALE+playerRect[i].width/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE+playerRect[i].height/IMAGE_SCALE),
@@ -561,12 +574,21 @@ int main(int argc,char **argv){
 			for(vector<Tracker>::iterator it = trackers.begin();it != trackers.end();++it){
 				CvPoint pt = transformPoint(cvPoint(it->foot.x/IMAGE_SCALE, it->foot.y/IMAGE_SCALE), H);
 				cvCircle(birdsImg, pt, 5, cvScalar(0,0,255), CV_FILLED);//left
+				cvCircle(Ismall, cvPoint(it->foot.x/IMAGE_SCALE, it->foot.y/IMAGE_SCALE), 5, cvScalar(255,0,0) , CV_FILLED);
 				
 				/*cvRectangle(Ismall, cvPoint(it->bbox.x/IMAGE_SCALE, it->bbox.y/IMAGE_SCALE),
 					cvPoint((it->bbox.x+it->bbox.width)/IMAGE_SCALE, (it->bbox.y+it->bbox.height)/IMAGE_SCALE),
 					CVX_WHITE);*/
-				if(it->no_found_cnt==0)
+				if(it->no_found_cnt==0){
+					sprintf(str, "%d", it->id);
 					cvLine(Itrace,cvPoint(it->last.x/IMAGE_SCALE, (it->last.y+it->bbox.height/2)/IMAGE_SCALE),cvPoint(it->center.x/IMAGE_SCALE, (it->center.y+it->bbox.height/2)/IMAGE_SCALE), it->color,1);
+					if(it->team==TEAM_1){
+						cvPutText(Ismall, str, cvPoint(it->foot.x/IMAGE_SCALE, it->foot.y/IMAGE_SCALE), &font, cvScalar(255,0,255));
+					}else if(it->team==TEAM_2){
+						cvPutText(Ismall, str, cvPoint(it->foot.x/IMAGE_SCALE, it->foot.y/IMAGE_SCALE), &font, cvScalar(255,255,0));
+					}
+					
+				}
 			}
 			cvAdd(Ismall, Itrace, Ismall);
 			cvShowImage("bird", birdsImg);

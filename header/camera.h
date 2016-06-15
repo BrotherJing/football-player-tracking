@@ -13,6 +13,10 @@
 #include <cxcore.h>
 #include "qcvcamshifttracker.h"
 
+//bgs
+#include "package_bgs/FrameDifferenceBGS.h"
+#include "package_bgs/AdaptiveBackgroundLearning.h"
+
 #define CV_CONTOUR_APPROX_LEVEL 1
 #define CVCLOSE_ITR 2
 #define CVCLOSE_ITR_SMALL 1
@@ -40,6 +44,8 @@ const int MARGIN_BLUE = 35;
 const int MARGIN_GREEN = 40;
 const int MARGIN_WHITE = 60;
 
+const float LOWPASS_FILTER_RATE = 0.8;
+
 //some function
 #define ZERO 1e-8
 #define DIS(a,b) sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y))
@@ -52,21 +58,23 @@ int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p);
 CvPoint transformPoint(const CvPoint point, const CvMat* matrix);
 void find_connected_components(IplImage *mask, int find_ground=1, float perimScale=60, 
 	int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL, bool draw=true);
-
+CvPoint transformPoint(const CvPoint point, const CvMat* matrix);
 
 //tracking
 class Tracker{
 public:
 	CvRect context;
 	CvRect bbox;
-	CvPoint center, last;
-	float move_dist;
+	CvPoint center, last, foot;
+
+	int bbox_id;
 	int no_found_cnt;
 	CvScalar color;
 
 	Tracker(CvRect, CvPoint);
 };
-void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
+void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l);
+void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt);
 void find_player_teams(IplImage *frame, IplImage *mask,  CvRect *bbs, int *labels, int cnt);
 
 #endif

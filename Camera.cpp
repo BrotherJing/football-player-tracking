@@ -7,12 +7,11 @@ using namespace cv;
 using namespace std;
 
 IplImage *frame, *Ismall, *birdsImg, *Iground, *Itrace;
-IplImage *frameRight, *IsmallRight;
-IplImage *Iscratch, *Iscratch2;
+IplImage *frameRight, *IsmallRight, *IgroundRight;
 IplImage *Imaskt, *Imask, *ImaskBird, *ImaskPlayers, *ImaskLines;
-IplImage *ImaskSmall, *ImaskSmall2, *ImaskBirdt;
-IplImage *scratch;
-IplImage *blue, *green, *red;
+IplImage *ImaskRight, *ImaskBirdRight, *ImaskPlayersRight, *ImaskLinesRight;
+IplImage *scratch[2];
+IplImage *blue[2], *green[2], *red[2];
 IplImage *h, *s, *v;
 CvSize sz, szBird;
 int cnt=0;
@@ -27,12 +26,15 @@ Mat hsv, hue;
 int ch[] = {0, 0};
 
 vector<Tracker> trackers;
+vector<Tracker> trackersRight;
 CvRNG rng = cvRNG(0xffffffff);
 
 //contour
 CvRect playerRect[30];
 CvPoint playerCenter[30];
-int playerCount=30;
+CvRect playerRectRight[30];
+CvPoint playerCenterRight[30];
+int playerCount1=30, playerCount2=30;
 
 //perspective
 CvMat *H = cvCreateMat(3,3,CV_32F), *H_inv = cvCreateMat(3,3,CV_32F);
@@ -58,9 +60,8 @@ void AllocImages(IplImage *frame){
 	IsmallRight=cvCreateImage(sz,frame->depth,frame->nChannels);
 	Itrace = cvCreateImage(sz, frame->depth,frame->nChannels);
 
-	Iscratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_32F,3);
-	Iscratch2 = cvCreateImage(cvGetSize(frame),IPL_DEPTH_32F,3);
-	scratch = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
+	scratch[0] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
+	scratch[1] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
 
 	Iground = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
 	Imask = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
@@ -69,35 +70,41 @@ void AllocImages(IplImage *frame){
 	ImaskPlayers = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
 	ImaskLines = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
 
-	ImaskSmall = cvCreateImage(sz, IPL_DEPTH_8U, 1);
-	ImaskSmall2 = cvCreateImage(sz, IPL_DEPTH_8U, 1);
-	ImaskBirdt = cvCreateImage(szBird, IPL_DEPTH_8U, 1);
+	IgroundRight = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+	ImaskRight = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+	ImaskBirdRight = cvCreateImage(szBird, IPL_DEPTH_8U, 1);
+	ImaskPlayersRight = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
+	ImaskLinesRight = cvCreateImage(cvGetSize(frame), IPL_DEPTH_8U, 1);
 
- 	blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
- 	green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
- 	red = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	blue[0] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	green[0] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	red[0] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	blue[1] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	green[1] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	red[1] = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 
  	h = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	s = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	v = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 
-	cvZero(Iscratch);cvZero(Iscratch2);
 	cvZero(Itrace);
-
 }
 
 void DeallocateImages(){
 	cvReleaseImage(&Ismall);cvReleaseImage(&birdsImg);cvReleaseImage(&IsmallRight);
-	cvReleaseImage(&Iscratch);cvReleaseImage(&Iscratch2);
 	cvReleaseImage(&Imaskt);cvReleaseImage(&ImaskBird);cvReleaseImage(&ImaskPlayers);cvReleaseImage(&ImaskLines);
-	cvReleaseImage(&ImaskSmall);cvReleaseImage(&ImaskSmall2);cvReleaseImage(&ImaskBirdt);
+	cvReleaseImage(&ImaskBirdRight);cvReleaseImage(&ImaskPlayersRight);cvReleaseImage(&ImaskLinesRight);
+	cvReleaseImage(&blue[0]);cvReleaseImage(&blue[1]);
+	cvReleaseImage(&red[0]);cvReleaseImage(&red[1]);
+	cvReleaseImage(&green[0]);cvReleaseImage(&green[1]);
+	cvReleaseImage(&scratch[0]);cvReleaseImage(&scratch[1]);
 
-	cvReleaseImage(&Iground);
+	cvReleaseImage(&Iground);cvReleaseImage(&IgroundRight);
 }
 
-void splitFrame(IplImage *frame){
-	cvCvtScale(frame, scratch, 1, 0);
-	cvSplit(scratch,blue,green,red,0);
+void splitFrame(IplImage *frame, int isRight){
+	cvCvtScale(frame, scratch[isRight], 1, 0);
+	cvSplit(scratch[isRight],blue[isRight],green[isRight],red[isRight],0);
 }
 
 // Callback function used in labeler image show window ...
@@ -135,7 +142,7 @@ static void camShiftLabelerOnMouse( int event, int x, int y, int, void* )
 }
 
 void showHist(IplImage *frame, int isRight){
-	splitFrame(frame);
+	splitFrame(frame, isRight);
 	//cvCvtColor(frame, gray, CV_BGR2GRAY);
 	int hist_size=255;
 	//int hist_height=256;
@@ -144,9 +151,9 @@ void showHist(IplImage *frame, int isRight){
 	CvHistogram *blue_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
 	CvHistogram *green_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
 	CvHistogram *red_hist=cvCreateHist(1,&hist_size,CV_HIST_ARRAY, ranges);
-	cvCalcHist(&blue, blue_hist, 0, 0);
-	cvCalcHist(&green, green_hist, 0, 0);
-	cvCalcHist(&red, red_hist, 0, 0);
+	cvCalcHist(&blue[isRight], blue_hist, 0, 0);
+	cvCalcHist(&green[isRight], green_hist, 0, 0);
+	cvCalcHist(&red[isRight], red_hist, 0, 0);
 	cvNormalizeHist(blue_hist, 1.0);cvNormalizeHist(green_hist, 1.0);cvNormalizeHist(red_hist, 1.0);
 
 	float max_value = 0;
@@ -158,19 +165,20 @@ void showHist(IplImage *frame, int isRight){
 
 void findGround(IplImage *frame, IplImage *Imask, int isRight){
 
-	cvInRangeS(blue, cvScalar(max_idx_blue[isRight]-MARGIN_BLUE), cvScalar(max_idx_blue[isRight]+MARGIN_BLUE), Imask);
-	cvInRangeS(green, cvScalar(max_idx_green[isRight]-MARGIN_GREEN), cvScalar(max_idx_green[isRight]+MARGIN_GREEN), Imaskt);
+	cvInRangeS(blue[isRight], cvScalar(max_idx_blue[isRight]-MARGIN_BLUE), cvScalar(max_idx_blue[isRight]+MARGIN_BLUE), Imask);
+	cvInRangeS(green[isRight], cvScalar(max_idx_green[isRight]-MARGIN_GREEN), cvScalar(max_idx_green[isRight]+MARGIN_GREEN), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(max_idx_red[isRight]-MARGIN), cvScalar(max_idx_red[isRight]+MARGIN), Imaskt);
+	cvInRangeS(red[isRight], cvScalar(max_idx_red[isRight]-MARGIN), cvScalar(max_idx_red[isRight]+MARGIN), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
 	//cvCmp(green, blue, Imaskt, CV_CMP_GT);
-	cvSub(green, blue, Imaskt);
+	cvSub(green[isRight], blue[isRight], Imaskt);
 	cvCmpS(Imaskt, 5, Imaskt, CV_CMP_GT);
 	cvAnd(Imask,Imaskt,Imask);
 	//cvCmp(green, red, Imaskt, CV_CMP_GT);
-	cvSub(green, red, Imaskt);
+	cvSub(green[isRight], red[isRight], Imaskt);
 	cvCmpS(Imaskt, 5, Imaskt, CV_CMP_GT);
 	cvAnd(Imask,Imaskt,Imask);
+
 }
 
 CvPoint addLines[4][2];
@@ -189,8 +197,8 @@ void callbackAddLines(int event, int x, int y, int flag, void *ustc){
 			CvPoint endPoint = cvPoint(x*IMAGE_SCALE, y*IMAGE_SCALE);
 			addLines[addLineCnt][0]=startPoint;
 			addLines[addLineCnt][1]=endPoint;
-			cvLine(frame, startPoint,endPoint ,CVX_RED, 2);
-			cvResize(frame,Ismall);
+			cvLine((IplImage*)ustc, startPoint,endPoint ,CVX_RED, 2);
+			cvResize((IplImage*)ustc,Ismall);
 			cvShowImage("display",Ismall);
 			addLineCnt++;
 		}
@@ -229,15 +237,13 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	}
 	CvSeq *lineseq=0;
 
-	cvInRangeS(blue, cvScalar(0), cvScalar(max_idx_blue[isRight]+40), Imask);
-	cvInRangeS(green, cvScalar(0), cvScalar(max_idx_green[isRight]+85), Imaskt);
+	cvInRangeS(blue[isRight], cvScalar(0), cvScalar(max_idx_blue[isRight]+40), Imask);
+	cvInRangeS(green[isRight], cvScalar(0), cvScalar(max_idx_green[isRight]+85), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
-	cvInRangeS(red, cvScalar(0), cvScalar(max_idx_red[isRight]+5), Imaskt);
+	cvInRangeS(red[isRight], cvScalar(0), cvScalar(max_idx_red[isRight]+5), Imaskt);
 	cvOr(Imask,Imaskt,Imask);
 	cvNot(Imask, Imask);
 	cvAnd(Imask, ImaskGround, Imask);
-	/*cvShowImage("displayRight", Imask);
-	cvWaitKey();*/
 
 	//cvSmooth(Imask,Imask,CV_MEDIAN,3,3);
 	//find_connected_components(Imask,0, 0, 200, NULL, NULL, NULL,1);
@@ -301,7 +307,7 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	//if there are no enough line, add some line manually
 	cvResize(frame, Ismall);
 	cvShowImage("display",Ismall);
-	setMouseCallback("display",callbackAddLines);
+	setMouseCallback("display",callbackAddLines, frame);
 	cvWaitKey();
 	for(int i=0;i<addLineCnt;++i){
 		found=false;
@@ -366,8 +372,8 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 		cvCircle(frame, cross[i], 5, CVX_RED , CV_FILLED);
 	}
 	cvResize(frame, Ismall);
-	cvShowImage("display",Ismall);
-	cvWaitKey();
+	cvShowImage("display", Ismall);
+	cvWaitKey(0);
 
 	//find hull, and playground boundary
 	cvZero(Imask);
@@ -409,7 +415,7 @@ bool findLines(IplImage *frame, IplImage *ImaskGround, IplImage *Imask, int isRi
 	return true;
 }
 
-void getPerspectiveTransform(CvPoint *pts){
+void getPerspectiveTransform(CvPoint *pts, int isRight){
 
 	imgPts[0].x=0; imgPts[0].y=szBird.height/2;
 	imgPts[1].x=szBird.width; imgPts[1].y=szBird.height/2;
@@ -417,95 +423,139 @@ void getPerspectiveTransform(CvPoint *pts){
 	imgPts[3].x=szBird.width; imgPts[3].y=szBird.height;
 	
 	for(int i=0;i<4;++i){
-		objPts[i].x=(float)pts[i].x/2;
-		objPts[i].y=(float)pts[i].y/2;
+		objPts[i].x=(float)pts[i].x/IMAGE_SCALE;//notice!!!
+		objPts[i].y=(float)pts[i].y/IMAGE_SCALE;
 	}
-	cvGetPerspectiveTransform(imgPts, objPts, H);
+	if(isRight==0)
+		cvGetPerspectiveTransform(imgPts, objPts, H);
+	else
+		cvGetPerspectiveTransform(imgPts, objPts, H2);
 }
 
 int main(int argc,char **argv){
+
+	//IBGS *bgs;
+	//bgs = new FrameDifferenceBGS;//static people will disappear!!
+	//bgs = new AdaptiveBackgroundLearning;//use background, with shadow in the back
 
 	bool paused=false;
 	cv::Mat m_frame;
 
 	namedWindow("display",WINDOW_AUTOSIZE);
-	namedWindow("displayRight", WINDOW_AUTOSIZE);
-	namedWindow("lines",WINDOW_AUTOSIZE);
+	namedWindow("displayRight",WINDOW_AUTOSIZE);
 	namedWindow("bird",WINDOW_AUTOSIZE);
-	namedWindow("bird2",WINDOW_AUTOSIZE);
+	namedWindow("birdRight",WINDOW_AUTOSIZE);
 	CvCapture *capture = cvCreateFileCapture(argv[1]);
+	CvCapture *captureRight = cvCreateFileCapture(argv[2]);
 	frame=cvQueryFrame(capture);
+	frameRight = cvQueryFrame(captureRight);
 	/*cvShowImage("display", frame);
 	setMouseCallback("display", callbackChooseTeamColor);
 	cvWaitKey(0);*/
 
 	AllocImages(frame);
 
-	cvResize(frame, Ismall);
-	cvShowImage("display",Ismall);
+	//cvResize(frame, Ismall);
+	//cvShowImage("display",Ismall);
 	showHist(frame,0);
+	showHist(frameRight, 1);
 	
 	while(1){
 		if(!paused){
 			frame=cvQueryFrame(capture);
-			splitFrame(frame);
-			//frameRight=cvQueryFrame(captureRight);
-			if(!frame
-				//||!frameRight
-				)
-				break;
+			splitFrame(frame, 0);
+			frameRight=cvQueryFrame(captureRight);
+			splitFrame(frameRight, 1);
+			if(!frame||!frameRight)break;
 
 			findGround(frame, Imask,0);// exclude player and lines
+			findGround(frameRight, ImaskRight, 1);
 			if(!foundGround){
 				foundGround = true;
 				cvCvtScale(Imask, Iground, 1,0);
 				find_connected_components(Iground);
+				cvCvtScale(ImaskRight, IgroundRight, 1,0);
+				find_connected_components(IgroundRight);
 			}
 
 			if(!foundPerspective){
 				foundPerspective = findLines(frame, Iground, ImaskLines, 0, ptsOnLine);
-				if(foundPerspective){
-					getPerspectiveTransform(ptsOnLine);
-					//setMouseCallback( "display", camShiftLabelerOnMouse, 0 );
-				}
-				continue;
+				if(foundPerspective)getPerspectiveTransform(ptsOnLine, 0);
+				else continue;
+				foundPerspective = findLines(frameRight, IgroundRight, ImaskLinesRight, 1, ptsOnLine);
+				if(foundPerspective)getPerspectiveTransform(ptsOnLine, 1);
+				else continue;
+				cvInvert(H, H_inv);
+				cvGEMM(H2, H_inv, 1.0, NULL, 0.0, H_r2l);
 			}
 
 			cvResize(frame, Ismall);
-			cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
-				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+			/*cvWarpPerspective(Ismall, birdsImg, H, CV_INTER_LINEAR|
+				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);*/
 
+			//left camera
+			playerCount1=30;
 			findLines(frame, Iground, ImaskLines, 0);
 			cvNot(Imask, Imask);
 			cvSub(Imask, ImaskLines, Imask);
 			cvAnd(Iground,Imask,Imask);
-			find_connected_components(Imask, 0, 60, &playerCount, playerRect, playerCenter, false);
-			trackPlayers(trackers, playerRect, playerCenter, playerCount);
+			find_connected_components(Imask, 0, 60, &playerCount1, playerRect, playerCenter, false);
+
+			//right camera
+			cvResize(frameRight, IsmallRight);
+			cvWarpPerspective(IsmallRight, birdsImg, H2, CV_INTER_LINEAR|
+				CV_WARP_INVERSE_MAP|CV_WARP_FILL_OUTLIERS);
+			playerCount2=30;
+			findLines(frameRight, IgroundRight, ImaskLinesRight, 1);
+			cvNot(ImaskRight, ImaskRight);
+			cvSub(ImaskRight, ImaskLinesRight, ImaskRight);
+			cvAnd(IgroundRight, ImaskRight, ImaskRight);
+			find_connected_components(ImaskRight, 0, 60, &playerCount2, playerRectRight, playerCenterRight, false);
+			/*for(int i=0;i<playerCount2;++i){
+				playerCenterRight[i].y+=playerRectRight[i].height/2;//foot point
+				playerCenterRight[i].x/=IMAGE_SCALE;
+				playerCenterRight[i].y/=IMAGE_SCALE;
+				//cvCircle(IsmallRight, playerCenterRight[i], 5, CVX_WHITE , CV_FILLED);
+				playerCenterRight[i]=transformPoint(playerCenterRight[i], H_r2l);
+				playerCenterRight[i].x*=IMAGE_SCALE;
+				playerCenterRight[i].y*=IMAGE_SCALE;
+			}*/
+
+			//trackPlayers(trackers, playerRect, playerCenter, playerCount1, playerRectRight, playerCenterRight, playerCount2);
+			trackPlayersSimple(trackersRight, playerRectRight, playerCenterRight, playerCount2);
+			//trackPlayersSimple(trackers, playerRect, playerCenter, playerCount1);
+			trackPlayers(trackers, playerRect, playerCenter, playerCount1, trackersRight, H_r2l);
 			//cout<<trackers.size()<<endl;
 			/*IplImage *hsv = cvCreateImage(cvGetSize(frame), frame->depth,frame->nChannels);
 			cvCvtColor(frame, hsv, CV_BGR2HSV);
 			cvSplit(hsv,h,s,v,0);*/
 
 			//find_player_teams(h, Imask, playerRect, NULL, playerCount);
-			for(int i=0;i<playerCount;++i){
-				/*CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
-				pt.x=pt.x/IMAGE_SCALE;
-				pt.y=pt.y/IMAGE_SCALE;*/
+			for(int i=0;i<trackersRight.size();++i){
+				cvCircle(IsmallRight, cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), 5, CVX_WHITE, CV_FILLED);
+				CvPoint pt = transformPoint(cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), H_r2l);
+				CvPoint pt2 = transformPoint(cvPoint(trackersRight[i].foot.x/IMAGE_SCALE, trackersRight[i].foot.y/IMAGE_SCALE), H2);
+				//CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
+				//pt.x=pt.x/IMAGE_SCALE;
+				//pt.y=pt.y/IMAGE_SCALE;
 				//pt = transformPoint(pt, H);
-				//cvCircle(birdsImg, pt, 5, CVX_WHITE , CV_FILLED);
+				cvCircle(Ismall, pt, 5, cvScalar(255,0,0) , CV_FILLED);
+				cvCircle(birdsImg, pt2, 5, CVX_WHITE , CV_FILLED);//right
 				/*cvRectangle(Ismall, cvPoint(playerRect[i].x/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE),
 					cvPoint(playerRect[i].x/IMAGE_SCALE+playerRect[i].width/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE+playerRect[i].height/IMAGE_SCALE),
 					CVX_WHITE);*/
 			}
 			for(vector<Tracker>::iterator it = trackers.begin();it != trackers.end();++it){
+				CvPoint pt = transformPoint(cvPoint(it->foot.x/IMAGE_SCALE, it->foot.y/IMAGE_SCALE), H);
+				cvCircle(birdsImg, pt, 5, cvScalar(0,0,255), CV_FILLED);//left
+				
 				/*cvRectangle(Ismall, cvPoint(it->bbox.x/IMAGE_SCALE, it->bbox.y/IMAGE_SCALE),
 					cvPoint((it->bbox.x+it->bbox.width)/IMAGE_SCALE, (it->bbox.y+it->bbox.height)/IMAGE_SCALE),
 					CVX_WHITE);*/
 				if(it->no_found_cnt==0)
-					cvLine(Itrace,cvPoint(it->last.x/IMAGE_SCALE, it->last.y/IMAGE_SCALE),cvPoint(it->center.x/IMAGE_SCALE, it->center.y/IMAGE_SCALE), it->color,1);
+					cvLine(Itrace,cvPoint(it->last.x/IMAGE_SCALE, (it->last.y+it->bbox.height/2)/IMAGE_SCALE),cvPoint(it->center.x/IMAGE_SCALE, (it->center.y+it->bbox.height/2)/IMAGE_SCALE), it->color,1);
 			}
 			cvAdd(Ismall, Itrace, Ismall);
-			playerCount=30;
 			cvShowImage("bird", birdsImg);
 			//cvWaitKey(0);
 
@@ -525,6 +575,7 @@ int main(int argc,char **argv){
  		}*/
 
 		cvShowImage("display", Ismall);
+		cvShowImage("displayRight", IsmallRight);
 
 		char c = cvWaitKey(20);
 		if(c==27)break;
@@ -536,11 +587,9 @@ int main(int argc,char **argv){
 	}
 	//camShiftTrackers.clear();
 	DeallocateImages();
-	cvReleaseCapture(&capture);
+	cvReleaseCapture(&capture);cvReleaseCapture(&captureRight);
 	cvDestroyWindow("display");
 	cvDestroyWindow("displayRight");
-	cvDestroyWindow("lines");
 	cvDestroyWindow("bird");
-	cvDestroyWindow("bird2");
 	return 0;
 }

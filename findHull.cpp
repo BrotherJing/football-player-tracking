@@ -167,23 +167,10 @@ void find_connected_components(IplImage *mask, int find_ground, float perimScale
 	
 	if(draw)
 		cvZero(mask);
-	IplImage *maskTemp;
 	if(num!=NULL){
 		int N=*num, numFilled=0, i=0;
-		CvMoments moments;
-		double M00,M01,M10;
-		//maskTemp = cvCloneImage(mask);
 		for(i=0,c=contours;c!=NULL;c=c->h_next,i++){
 			if(i<N){
-				/*cvDrawContours(maskTemp, c, CVX_WHITE, CVX_WHITE, -1, CV_FILLED, 8);
-				if(centers!=NULL){
-					cvMoments(maskTemp, &moments, 1);
-					M00 = cvGetSpatialMoment(&moments, 0, 0);
-					M01 = cvGetSpatialMoment(&moments, 0, 1);
-					M10 = cvGetSpatialMoment(&moments, 1, 0);
-					centers[i].x=(int)(M10/M00);
-					centers[i].y=(int)(M01/M00);
-				}*/
 				if(bbs!=NULL){
 					bbs[i]=cvBoundingRect(c);
 				}
@@ -191,7 +178,6 @@ void find_connected_components(IplImage *mask, int find_ground, float perimScale
 					centers[i].x=bbs[i].x+bbs[i].width/2;
 					centers[i].y=bbs[i].y+bbs[i].height/2;
 				}
-				//cvZero(maskTemp);
 				numFilled++;
 			}
 			if(find_ground){
@@ -202,7 +188,6 @@ void find_connected_components(IplImage *mask, int find_ground, float perimScale
 				cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
 		}
 		*num = numFilled;
-		//cvReleaseImage(&maskTemp);
 	}else{
 		for(c=contours; c!=NULL; c=c->h_next){
 			if(find_ground){
@@ -216,7 +201,7 @@ void find_connected_components(IplImage *mask, int find_ground, float perimScale
 }
 
 void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels, int cnt){
-	cv::Rect roi;
+	/*cv::Rect roi;
 	cv::Mat hist;
 	float range[] = {0, 255};
 	const int histSize = 256;
@@ -237,51 +222,40 @@ void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels
 		cvInRangeS(&roi_img, cvScalar(40), cvScalar(60), Imask);
 		area = cvCountNonZero(Imask);
 		cout<<"team 2 area: "<<area<<endl;
-		/*cv::calcHist(&roi_mat, 1,0, roi_mask, hist, 1, &histSize, ranges);
-		cv::normalize(hist, hist, 0, 255, CV_MINMAX);
-		double maxVal = 0;
-		cv::Point maxPoint;
-		cv::minMaxLoc(hist, 0, &maxVal, 0,&maxPoint);
-		int hpt = static_cast<int>(0.9*256);
-
-    		cv::Mat histImg(256, 256, CV_8UC3, cv::Scalar(0,0,0));
-		for(int h=0; h<255; h++){
-			float binVal = hist.at<float>(h);
-			float binVal2 = hist.at<float>(h+1);
-			int intensity = static_cast<int>(binVal*hpt/maxVal);
-			int intensity2 = static_cast<int>(binVal2*hpt/maxVal);
-			cv::line(histImg, cv::Point(h,256-intensity),
-			cv::Point(h,256-intensity2), cv::Scalar(255,255,255));
-		}
-		cout<<"Loc "<<bbs[i].x<<","<<bbs[i].y<<" : "<<maxPoint.x<<endl;
-		imshow("display", histImg);*/
 		cvRectangle(frame, cvPoint(roi.x,roi.y),
 	                          cvPoint(roi.x+roi.width, roi.y+roi.height),
 	                          cvScalar(0,0,0), -1, 8 );
 		cvShowImage("bird", frame);
 		cvWaitKey(0);
-	}
+	}*/
 }
 
 extern CvRNG rng;
 
 Tracker::Tracker(CvRect c, CvPoint p){
 	no_found_cnt = 0;
-	move_dist = numeric_limits<float>::max();
+	bbox_id = -1;
 
 	bbox = c;
-	context = cvRect(c.x-c.width/2, c.y-c.height/2, (int)(c.width*1.5), (int)(c.height*1.5));
+	context = cvRect(c.x-c.width/2, c.y-c.height/2, (int)(c.width*2), (int)(c.height*2));
 	center = p;
 	last = center;
+	foot = cvPoint(center.x, center.y+bbox.height/2+10);
 	color = cvScalar(cvRandInt(&rng)%255, cvRandInt(&rng)%255, cvRandInt(&rng)%255);
 }
 
 const int MAX_NO_FOUND = 5;
+bool *isNewPoint = new bool[30];
+int *numTrackerPerPoint = new int[30];
 
-void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt){
+//vector<Tracker> trackersRight;
 
-	bool *isNewPoint = new bool[cnt];
-	for(int i=0;i<cnt;++i)isNewPoint[i]=true;
+void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt){
+
+	for(int i=0;i<cnt;++i){
+		isNewPoint[i]=true;
+		numTrackerPerPoint[i]=0;
+	}
 
 	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
 		float dist_min = numeric_limits<float>::max();
@@ -296,19 +270,121 @@ void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int 
 					best_choice=i;
 				}
 			}
-		}	
+		}
 		if(best_choice!=-1){// candidate found
 			it->no_found_cnt=0;
-			int x=bbs[best_choice].x, y=bbs[best_choice].y, w=bbs[best_choice].width, h=bbs[best_choice].height;
-			it->context = cvRect(x-w/2, y-h/2, (int)(w*1.5), (int)(h*1.5));
-			it->bbox = bbs[best_choice];
+			int x=bbs[best_choice].x, y=bbs[best_choice].y, w=bbs[best_choice].width, h=(int)(it->bbox.height*LOWPASS_FILTER_RATE+bbs[best_choice].height*(1.0 - LOWPASS_FILTER_RATE));
+			it->context = cvRect(x-w/2, y-h/2, (int)(w*2), (int)(h*2));
+			it->bbox = cvRect(x, y, w, h);
 			it->last = it->center;
-			it->center = cvPoint(centers[best_choice].x, centers[best_choice].y);
+			it->center = cvPoint(centers[best_choice].x, (int)(it->center.y*LOWPASS_FILTER_RATE+centers[best_choice].y*(1- LOWPASS_FILTER_RATE)));
+			it->foot = cvPoint(it->center.x, it->center.y+h/2+10);
+			it->bbox_id = best_choice;
+			numTrackerPerPoint[best_choice]++;
 		}else{
 			it->no_found_cnt++;
+			it->bbox_id = -1;
 			if(it->no_found_cnt>MAX_NO_FOUND){
 				it = trackers.erase(it);
 				continue;
+			}
+		}
+		++it;
+	}
+
+	for(int i=0;i<cnt;++i){
+		if(isNewPoint[i]){
+			trackers.push_back(Tracker(bbs[i], centers[i]));
+		}
+	}
+}
+
+void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int cnt, vector<Tracker> &trackersRight, CvMat *H_r2l){
+
+	for(int i=0;i<cnt;++i){
+		isNewPoint[i]=true;
+		numTrackerPerPoint[i]=0;
+	}
+
+	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
+		float dist_min = numeric_limits<float>::max();
+		int best_choice=-1;
+		for(int i=0;i<cnt;++i){
+			if(centers[i].x>it->context.x&&centers[i].x<it->context.x+it->context.width&&
+				centers[i].y>it->context.y&&centers[i].y<it->context.y+it->context.height){
+				isNewPoint[i]=false;
+				float dist=DIS(it->center, centers[i]);
+				if(dist<dist_min){
+					dist_min = dist;
+					best_choice=i;
+				}
+			}
+		}
+		if(best_choice!=-1){// candidate found
+			/*it->no_found_cnt=0;
+			int x=bbs[best_choice].x, y=bbs[best_choice].y, w=bbs[best_choice].width, h=bbs[best_choice].height;
+			it->context = cvRect(x-w/2, y-h/2, (int)(w*2), (int)(h*2));
+			it->bbox = bbs[best_choice];
+			it->last = it->center;
+			it->center = cvPoint(centers[best_choice].x, centers[best_choice].y);*/
+			it->bbox_id = best_choice;
+			numTrackerPerPoint[best_choice]++;
+		}else{
+			it->no_found_cnt++;
+			it->bbox_id = -1;
+			if(it->no_found_cnt>MAX_NO_FOUND){
+				it = trackers.erase(it);
+				continue;
+			}
+		}
+		++it;
+	}
+
+	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
+		if(it->bbox_id!=-1&&numTrackerPerPoint[it->bbox_id]==1){// candidate found, and is unique for this tracker
+			it->no_found_cnt=0;
+			int x=bbs[it->bbox_id].x, y=bbs[it->bbox_id].y, w=bbs[it->bbox_id].width, h=bbs[it->bbox_id].height;
+			it->context = cvRect(x-w/2, y-h/2, (int)(w*2), (int)(it->context.height*LOWPASS_FILTER_RATE+h*2*(1.0 - LOWPASS_FILTER_RATE)));
+			it->bbox = cvRect(x, y, w, (int)(it->bbox.height*LOWPASS_FILTER_RATE+h*(1.0 - LOWPASS_FILTER_RATE)));
+			it->last = it->center;
+			it->center = cvPoint(centers[it->bbox_id].x, (int)(it->center.y*LOWPASS_FILTER_RATE+centers[it->bbox_id].y*(1- LOWPASS_FILTER_RATE)));
+			it->foot = cvPoint(centers[it->bbox_id].x, centers[it->bbox_id].y+bbs[it->bbox_id].height/2);
+		}else if(it->bbox_id!=-1){//not unique candidate. occlude!! resort to the other camera
+			float dist_min = numeric_limits<float>::max();
+			int best_choice=-1;
+			for(int i=0;i<trackersRight.size();++i){
+				CvPoint footRight = transformPoint(trackersRight[i].foot, H_r2l);
+				if(footRight.x>it->context.x&&footRight.x<it->context.x+it->context.width&&
+					footRight.y-it->bbox.height/2>it->context.y&&
+					footRight.y-it->bbox.height/2<it->context.y+it->context.height){
+					float dist=DIS(it->foot, footRight);
+					if(dist<dist_min){
+						dist_min = dist;
+						best_choice=i;
+					}
+				}
+			}
+			if(best_choice!=-1){// candidate found
+				it->no_found_cnt=0;
+				CvPoint footBest = transformPoint(trackersRight[best_choice].foot, H_r2l);
+				int x=footBest.x, y=footBest.y-it->bbox.height/2;//center point
+				//it->context = cvRect(x-w/2, y-h/2, (int)(w*2), (int)(h*2));
+				it->context.x = x-it->context.width/2;
+				it->context.y = y-it->context.height/2;
+				it->bbox.x = x-it->bbox.width/2;
+				it->bbox.y = y-it->bbox.height/2;
+				it->last = it->center;
+				it->center.x = x;
+				it->center.y = y;
+				it->foot.x = x;
+				it->foot.y = y+it->bbox.height/2;
+			}else{
+				it->no_found_cnt++;
+				it->bbox_id = -1;
+				if(it->no_found_cnt>MAX_NO_FOUND){
+					it = trackers.erase(it);
+					continue;
+				}
 			}
 		}
 		++it;

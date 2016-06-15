@@ -260,6 +260,7 @@ void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers
 	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
 		float dist_min = numeric_limits<float>::max();
 		int best_choice=-1;
+		int contain_tracker = -1;
 		for(int i=0;i<cnt;++i){
 			if(centers[i].x>it->context.x&&centers[i].x<it->context.x+it->context.width&&
 				centers[i].y>it->context.y&&centers[i].y<it->context.y+it->context.height){
@@ -270,6 +271,8 @@ void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers
 					best_choice=i;
 				}
 			}
+			if(it->center.x>bbs[i].x&&it->center.x<bbs[i].x+bbs[i].width&&
+				it->center.y>bbs[i].y&&it->center.y<bbs[i].y+bbs[i].height)contain_tracker = i;
 		}
 		if(best_choice!=-1){// candidate found
 			it->no_found_cnt=0;
@@ -278,9 +281,23 @@ void trackPlayersSimple(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers
 			it->bbox = cvRect(x, y, w, h);
 			it->last = it->center;
 			it->center = cvPoint(centers[best_choice].x, (int)(it->center.y*LOWPASS_FILTER_RATE+centers[best_choice].y*(1- LOWPASS_FILTER_RATE)));
-			it->foot = cvPoint(it->center.x, it->center.y+h/2+10);
+			it->foot = cvPoint(it->center.x, it->center.y+h/2+5);
 			it->bbox_id = best_choice;
 			numTrackerPerPoint[best_choice]++;
+		}else if(contain_tracker!=-1){
+			it->no_found_cnt=0;
+			int x=(int)(it->bbox.x*LOWPASS_FILTER_RATE+bbs[contain_tracker].x*(1.0 - LOWPASS_FILTER_RATE));
+			int y=(int)(it->bbox.y*LOWPASS_FILTER_RATE+bbs[contain_tracker].y*(1.0 - LOWPASS_FILTER_RATE));
+			int w=(int)(it->bbox.width*LOWPASS_FILTER_RATE+bbs[contain_tracker].width*(1.0 - LOWPASS_FILTER_RATE));
+			int h=(int)(it->bbox.height*LOWPASS_FILTER_RATE+bbs[contain_tracker].height*(1.0 - LOWPASS_FILTER_RATE));
+			it->context = cvRect(x-w/2, y-h/2, (int)(w*2), (int)(h*2));
+			it->bbox = cvRect(x, y, w, h);
+			it->last = it->center;
+			it->center = cvPoint((int)(it->center.x*LOWPASS_FILTER_RATE+centers[contain_tracker].x*(1- LOWPASS_FILTER_RATE)), 
+				(int)(it->center.y*LOWPASS_FILTER_RATE+centers[contain_tracker].y*(1- LOWPASS_FILTER_RATE)));
+			it->foot = cvPoint(it->center.x, it->center.y+h/2+5);
+			it->bbox_id = contain_tracker;
+			numTrackerPerPoint[contain_tracker]++;
 		}else{
 			it->no_found_cnt++;
 			it->bbox_id = -1;
@@ -309,6 +326,7 @@ void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int 
 	for (vector<Tracker>::iterator it = trackers.begin();it != trackers.end();){
 		float dist_min = numeric_limits<float>::max();
 		int best_choice=-1;
+		int contain_tracker = -1;
 		for(int i=0;i<cnt;++i){
 			if(centers[i].x>it->context.x&&centers[i].x<it->context.x+it->context.width&&
 				centers[i].y>it->context.y&&centers[i].y<it->context.y+it->context.height){
@@ -319,6 +337,8 @@ void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int 
 					best_choice=i;
 				}
 			}
+			if(it->center.x>bbs[i].x&&it->center.x<bbs[i].x+bbs[i].width&&
+				it->center.y>bbs[i].y&&it->center.y<bbs[i].y+bbs[i].height)contain_tracker = i;
 		}
 		if(best_choice!=-1){// candidate found
 			/*it->no_found_cnt=0;
@@ -329,6 +349,9 @@ void trackPlayers(vector<Tracker> &trackers, CvRect *bbs, CvPoint *centers, int 
 			it->center = cvPoint(centers[best_choice].x, centers[best_choice].y);*/
 			it->bbox_id = best_choice;
 			numTrackerPerPoint[best_choice]++;
+		}else if(contain_tracker!=-1){
+			it->bbox_id = contain_tracker;
+			numTrackerPerPoint[contain_tracker]++;
 		}else{
 			it->no_found_cnt++;
 			it->bbox_id = -1;

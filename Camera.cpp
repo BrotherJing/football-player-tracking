@@ -501,6 +501,19 @@ int main(int argc,char **argv){
 			cvAnd(Iground,Imask,Imask);
 			find_connected_components(Imask, 0, 60, &playerCount1, playerRect, playerCenter, false);
 
+			/*cv::Mat img_input(frame);
+			cv::Mat img_mask;
+			cv::Mat img_bkgmodel;
+			bgs->process(img_input, img_mask, img_bkgmodel); // by default, it shows automatically the foreground mask image
+			if(img_mask.empty()){
+				continue;
+			}
+			IplImage iImaskPlayers = IplImage(img_mask);
+			cvSub(&iImaskPlayers, ImaskLines, &iImaskPlayers);
+			cvAnd(&iImaskPlayers, Iground, &iImaskPlayers);
+			find_connected_components(&iImaskPlayers, 0, 60, &playerCount1, playerRect, playerCenter, false);*/
+
+
 			//right camera
 			cvResize(frameRight, IsmallRight);
 			cvWarpPerspective(IsmallRight, birdsImg, H2, CV_INTER_LINEAR|
@@ -540,7 +553,7 @@ int main(int argc,char **argv){
 				//pt.y=pt.y/IMAGE_SCALE;
 				//pt = transformPoint(pt, H);
 				cvCircle(Ismall, pt, 5, cvScalar(255,0,0) , CV_FILLED);
-				cvCircle(birdsImg, pt2, 5, CVX_WHITE , CV_FILLED);//right
+				cvCircle(birdsImg, pt2, 5, cvScalar(255,0,0) , CV_FILLED);//right
 				/*cvRectangle(Ismall, cvPoint(playerRect[i].x/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE),
 					cvPoint(playerRect[i].x/IMAGE_SCALE+playerRect[i].width/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE+playerRect[i].height/IMAGE_SCALE),
 					CVX_WHITE);*/

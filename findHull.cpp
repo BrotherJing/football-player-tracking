@@ -97,18 +97,16 @@ CvPoint transformPoint(const CvPoint point, const CvMat* matrix){
 	return result;
 }
 
-void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0, float perimScale, int *num, CvRect *bbs, CvPoint *centers, int find_lines){
+void find_connected_components(IplImage *mask, int find_ground, float perimScale, int *num, CvRect *bbs, CvPoint *centers, bool draw){
 	static CvMemStorage *mem_storage=NULL;
 	static CvSeq *contours=NULL;
-	if(!find_lines){
-		if(!find_ground){
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_OPEN,CVCLOSE_ITR_SMALL);//open
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
-			//cvErode(mask, mask, 0, 1);
-			//cvDilate(mask ,mask, 0, 1);
-		}else{
-			cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
-		}
+	if(!find_ground){
+		cvMorphologyEx(mask,mask,0,0,CV_MOP_OPEN,CVCLOSE_ITR_SMALL);//open
+		cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
+		//cvErode(mask, mask, 0, 1);
+		//cvDilate(mask ,mask, 0, 1);
+	}else{
+		cvMorphologyEx(mask,mask,0,0,CV_MOP_CLOSE,CVCLOSE_ITR);//close
 	}
 	if(mem_storage==NULL){
 		mem_storage = cvCreateMemStorage(0);
@@ -135,15 +133,15 @@ void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0,
 				maxarea = tmparea;
 			}
 		}
-		if(!find_ground&&!find_lines){
-			double tmparea=fabs(cvContourArea(c));
+		if(!find_ground){
+			double tmparea=cvContourArea(c);
 			double len = cvContourPerimeter(c);
 			CvRect aRect = cvBoundingRect(c, 0);
 			if(tmparea<100){//area too small
 				cvSubstituteContour(scanner, NULL);
 				continue;
 			}
-			if((aRect.y*1.0/mask->height*60+10)>aRect.height){
+			if((aRect.y*1.0/mask->height*60+5)>aRect.height){
 				cvSubstituteContour(scanner, NULL);
 				continue;
 			}
@@ -167,16 +165,17 @@ void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0,
 	}
 	contours=cvEndFindContours(&scanner);
 	
-	cvZero(mask);
+	if(draw)
+		cvZero(mask);
 	IplImage *maskTemp;
 	if(num!=NULL){
 		int N=*num, numFilled=0, i=0;
 		CvMoments moments;
 		double M00,M01,M10;
-		maskTemp = cvCloneImage(mask);
+		//maskTemp = cvCloneImage(mask);
 		for(i=0,c=contours;c!=NULL;c=c->h_next,i++){
 			if(i<N){
-				cvDrawContours(maskTemp, c, CVX_WHITE, CVX_WHITE, -1, CV_FILLED, 8);
+				/*cvDrawContours(maskTemp, c, CVX_WHITE, CVX_WHITE, -1, CV_FILLED, 8);
 				if(centers!=NULL){
 					cvMoments(maskTemp, &moments, 1);
 					M00 = cvGetSpatialMoment(&moments, 0, 0);
@@ -184,28 +183,34 @@ void find_connected_components(IplImage *mask, int find_ground, int poly1_hull0,
 					M10 = cvGetSpatialMoment(&moments, 1, 0);
 					centers[i].x=(int)(M10/M00);
 					centers[i].y=(int)(M01/M00);
-				}
+				}*/
 				if(bbs!=NULL){
 					bbs[i]=cvBoundingRect(c);
 				}
-				cvZero(maskTemp);
+				if(centers!=NULL){
+					centers[i].x=bbs[i].x+bbs[i].width/2;
+					centers[i].y=bbs[i].y+bbs[i].height/2;
+				}
+				//cvZero(maskTemp);
 				numFilled++;
 			}
 			if(find_ground){
 				double tmparea=fabs(cvContourArea(c));
 				if(tmparea<maxarea-1)continue;
 			}
-			cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
+			if(draw)
+				cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
 		}
 		*num = numFilled;
-		cvReleaseImage(&maskTemp);
+		//cvReleaseImage(&maskTemp);
 	}else{
 		for(c=contours; c!=NULL; c=c->h_next){
 			if(find_ground){
 				double tmparea=fabs(cvContourArea(c));
 				if(tmparea<maxarea-1)continue;
 			}
-			cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
+			if(draw)
+				cvDrawContours(mask, c, CVX_WHITE, CVX_BLACK, -1, CV_FILLED, 8);
 		}
 	}
 }
@@ -221,8 +226,18 @@ void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels
 		roi.width=bbs[i].width; roi.height=bbs[i].height;
 		Mat roi_mat(Mat(frame), roi);
 		Mat roi_mask(Mat(mask), roi);
+		IplImage *Imask = cvCreateImage(cvSize(roi.width, roi.height), IPL_DEPTH_8U, 1);
+		cvZero(Imask);
 
-		cv::calcHist(&roi_mat, 1,0, roi_mask, hist, 1, &histSize, ranges);
+		IplImage roi_img = roi_mat;
+		cvInRangeS(&roi_img, cvScalar(0), cvScalar(10), Imask);
+		int area = cvCountNonZero(Imask);
+		cout<<"team 1 area: "<<area<<endl;
+		cvZero(Imask);
+		cvInRangeS(&roi_img, cvScalar(40), cvScalar(60), Imask);
+		area = cvCountNonZero(Imask);
+		cout<<"team 2 area: "<<area<<endl;
+		/*cv::calcHist(&roi_mat, 1,0, roi_mask, hist, 1, &histSize, ranges);
 		cv::normalize(hist, hist, 0, 255, CV_MINMAX);
 		double maxVal = 0;
 		cv::Point maxPoint;
@@ -239,7 +254,7 @@ void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels
 			cv::Point(h,256-intensity2), cv::Scalar(255,255,255));
 		}
 		cout<<"Loc "<<bbs[i].x<<","<<bbs[i].y<<" : "<<maxPoint.x<<endl;
-		imshow("display", histImg);
+		imshow("display", histImg);*/
 		cvRectangle(frame, cvPoint(roi.x,roi.y),
 	                          cvPoint(roi.x+roi.width, roi.y+roi.height),
 	                          cvScalar(0,0,0), -1, 8 );
@@ -247,6 +262,8 @@ void find_player_teams(IplImage *frame, IplImage *mask, CvRect *bbs, int *labels
 		cvWaitKey(0);
 	}
 }
+
+extern CvRNG rng;
 
 Tracker::Tracker(CvRect c, CvPoint p){
 	no_found_cnt = 0;
@@ -256,6 +273,7 @@ Tracker::Tracker(CvRect c, CvPoint p){
 	context = cvRect(c.x-c.width/2, c.y-c.height/2, (int)(c.width*1.5), (int)(c.height*1.5));
 	center = p;
 	last = center;
+	color = cvScalar(cvRandInt(&rng)%255, cvRandInt(&rng)%255, cvRandInt(&rng)%255);
 }
 
 const int MAX_NO_FOUND = 5;

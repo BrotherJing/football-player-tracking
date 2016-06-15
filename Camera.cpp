@@ -13,6 +13,7 @@ IplImage *Imaskt, *Imask, *ImaskBird, *ImaskPlayers, *ImaskLines;
 IplImage *ImaskSmall, *ImaskSmall2, *ImaskBirdt;
 IplImage *scratch;
 IplImage *blue, *green, *red;
+IplImage *h, *s, *v;
 CvSize sz, szBird;
 int cnt=0;
 
@@ -26,6 +27,7 @@ Mat hsv, hue;
 int ch[] = {0, 0};
 
 vector<Tracker> trackers;
+CvRNG rng = cvRNG(0xffffffff);
 
 //contour
 CvRect playerRect[30];
@@ -74,6 +76,10 @@ void AllocImages(IplImage *frame){
  	blue = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	green = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
  	red = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+
+ 	h = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	s = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
+ 	v = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,1);
 
 	cvZero(Iscratch);cvZero(Iscratch2);
 	cvZero(Itrace);
@@ -188,6 +194,28 @@ void callbackAddLines(int event, int x, int y, int flag, void *ustc){
 			cvShowImage("display",Ismall);
 			addLineCnt++;
 		}
+	}
+}
+
+
+void callbackChooseTeamColor(int event, int x, int y, int flag, void *ustc){
+	if(event==CV_EVENT_LBUTTONDOWN){
+
+		IplImage *hsv = cvCreateImage(cvGetSize(frame), frame->depth,frame->nChannels);
+		cvCvtColor(frame, hsv, CV_BGR2HSV);
+		Vec3b &p = Mat(hsv).at<Vec3b>(y ,x);  
+            		printf(" at %d,%d: (b=%d, g=%d, r=%d) \n", x,y,p[0], p[1], p[2]);
+
+		CvConnectedComp comp;
+		CvSize sz=cvGetSize(frame);
+		sz.width=sz.width+2;sz.height=sz.height+2;
+		IplImage *mask = cvCreateImage(sz,IPL_DEPTH_8U,1);
+		cvZero(mask);
+		/*cvFloodFill(frame, cvPoint(x ,y), 
+			cvScalar(255,255,255), cvScalar(30,30,30), cvScalar(30,30,30),
+			&comp , 8|CV_FLOODFILL_FIXED_RANGE, mask);*/
+		cvShowImage("display",frame);
+		//cout<<comp.area<<' '<<comp.value.val[0]<<' '<<comp.value.val[1]<<' '<<comp.value.val[0]<<endl;
 	}
 }
 
@@ -407,6 +435,9 @@ int main(int argc,char **argv){
 	namedWindow("bird2",WINDOW_AUTOSIZE);
 	CvCapture *capture = cvCreateFileCapture(argv[1]);
 	frame=cvQueryFrame(capture);
+	/*cvShowImage("display", frame);
+	setMouseCallback("display", callbackChooseTeamColor);
+	cvWaitKey(0);*/
 
 	AllocImages(frame);
 
@@ -448,10 +479,14 @@ int main(int argc,char **argv){
 			cvNot(Imask, Imask);
 			cvSub(Imask, ImaskLines, Imask);
 			cvAnd(Iground,Imask,Imask);
-			find_connected_components(Imask, 0, 0, 60, &playerCount, playerRect, playerCenter);
-			//trackPlayers(trackers, playerRect, playerCenter, playerCount);
+			find_connected_components(Imask, 0, 60, &playerCount, playerRect, playerCenter, false);
+			trackPlayers(trackers, playerRect, playerCenter, playerCount);
 			//cout<<trackers.size()<<endl;
-			find_player_teams(green, Imask, playerRect, NULL, playerCount);
+			/*IplImage *hsv = cvCreateImage(cvGetSize(frame), frame->depth,frame->nChannels);
+			cvCvtColor(frame, hsv, CV_BGR2HSV);
+			cvSplit(hsv,h,s,v,0);*/
+
+			//find_player_teams(h, Imask, playerRect, NULL, playerCount);
 			for(int i=0;i<playerCount;++i){
 				/*CvPoint pt = cvPoint(playerRect[i].x+playerRect[i].width/2, playerRect[i].y+playerRect[i].height);
 				pt.x=pt.x/IMAGE_SCALE;
@@ -462,16 +497,16 @@ int main(int argc,char **argv){
 					cvPoint(playerRect[i].x/IMAGE_SCALE+playerRect[i].width/IMAGE_SCALE,playerRect[i].y/IMAGE_SCALE+playerRect[i].height/IMAGE_SCALE),
 					CVX_WHITE);*/
 			}
-			/*for(vector<Tracker>::iterator it = trackers.begin();it != trackers.end();++it){
-				cvRectangle(Ismall, cvPoint(it->bbox.x/IMAGE_SCALE, it->bbox.y/IMAGE_SCALE),
+			for(vector<Tracker>::iterator it = trackers.begin();it != trackers.end();++it){
+				/*cvRectangle(Ismall, cvPoint(it->bbox.x/IMAGE_SCALE, it->bbox.y/IMAGE_SCALE),
 					cvPoint((it->bbox.x+it->bbox.width)/IMAGE_SCALE, (it->bbox.y+it->bbox.height)/IMAGE_SCALE),
-					CVX_WHITE);
+					CVX_WHITE);*/
 				if(it->no_found_cnt==0)
-					cvLine(Itrace,cvPoint(it->last.x/IMAGE_SCALE, it->last.y/IMAGE_SCALE),cvPoint(it->center.x/IMAGE_SCALE, it->center.y/IMAGE_SCALE), CVX_WHITE,1);
+					cvLine(Itrace,cvPoint(it->last.x/IMAGE_SCALE, it->last.y/IMAGE_SCALE),cvPoint(it->center.x/IMAGE_SCALE, it->center.y/IMAGE_SCALE), it->color,1);
 			}
-			cvAdd(Ismall, Itrace, Ismall);*/
+			cvAdd(Ismall, Itrace, Ismall);
 			playerCount=30;
-			cvShowImage("bird", green);
+			cvShowImage("bird", birdsImg);
 			//cvWaitKey(0);
 
 			/*m_frame=Mat(Ismall);
@@ -491,7 +526,7 @@ int main(int argc,char **argv){
 
 		cvShowImage("display", Ismall);
 
-		char c = cvWaitKey(33);
+		char c = cvWaitKey(20);
 		if(c==27)break;
 		switch(c){
 		case 'p':paused = !paused;break;

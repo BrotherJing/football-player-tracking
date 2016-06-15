@@ -50,8 +50,8 @@ const int MARGIN_WHITE = 60;
 int hull_size=0;
 int findHull2(IplImage *Imask, CvPoint* pts, int cnt, CvPoint *hull_p);
 CvPoint transformPoint(const CvPoint point, const CvMat* matrix);
-void find_connected_components(IplImage *mask, int find_ground=1, int poly1_hull0=1, float perimScale=60, 
-	int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL, int find_lines=0);
+void find_connected_components(IplImage *mask, int find_ground=1, float perimScale=60, 
+	int *num=NULL, CvRect *bbs=NULL, CvPoint *centers=NULL, bool draw=true);
 
 
 //tracking
@@ -62,6 +62,7 @@ public:
 	CvPoint center, last;
 	float move_dist;
 	int no_found_cnt;
+	CvScalar color;
 
 	Tracker(CvRect, CvPoint);
 };
